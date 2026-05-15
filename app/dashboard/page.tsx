@@ -4,6 +4,9 @@ import AppLayout from '@/components/layout/AppLayout'
 import Topbar from '@/components/layout/Topbar'
 import { dashboardApi } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
+import { useAuthStore } from '@/lib/auth-store'
+import ParentDashboard from '@/components/dashboard/ParentDashboard'
+import StudentDashboard from '@/components/dashboard/StudentDashboard'
 import {
   Users, UserCheck, Building2, ClipboardCheck,
   UserPlus, CreditCard, Megaphone, FileText, TrendingUp, TrendingDown, Minus, Zap
@@ -39,6 +42,24 @@ export default function DashboardPage() {
     queryFn: () => dashboardApi.getRecentActivities(10).then(r => r.data),
     placeholderData: MOCK_ACTIVITIES,
   })
+
+  const { role } = useAuthStore()
+
+  if (role === 'parent') {
+    return (
+      <AppLayout>
+        <ParentDashboard />
+      </AppLayout>
+    )
+  }
+
+  if (role === 'student') {
+    return (
+      <AppLayout>
+        <StudentDashboard />
+      </AppLayout>
+    )
+  }
 
   return (
     <AppLayout>

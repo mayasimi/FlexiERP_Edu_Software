@@ -1,15 +1,16 @@
 'use client'
+
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, UserPlus, CreditCard, BookOpen, Package,
   CalendarDays, ClipboardCheck, Settings, Users, Mail,
-  User, BarChart3, ExternalLink, LogOut, Zap, FileText
+  User, BarChart3, ExternalLink, Zap, FileText
 } from 'lucide-react'
 import { useAuthStore } from '@/lib/auth-store'
 import { cn } from '@/lib/utils'
 
-const navItems = [
+const adminNavItems = [
   { label: 'Dashboard',       href: '/dashboard',       icon: LayoutDashboard },
   { label: 'Admission',       href: '/admission',       icon: UserPlus },
   { label: 'Fee Management',  href: '/fee-management',  icon: CreditCard },
@@ -27,33 +28,35 @@ const navItems = [
   { label: 'Portal',          href: '/portal',          icon: ExternalLink },
 ]
 
+const studentNavItems = [
+  { label: 'Dashboard',       href: '/dashboard',       icon: LayoutDashboard },
+  { label: 'Subjects & Scores', href: '/subjects',      icon: BookOpen },
+  { label: 'School Fees',     href: '/fees',           icon: CreditCard },
+  { label: 'Attendance',      href: '/attendance',      icon: ClipboardCheck },
+  { label: 'Report Card',     href: '/report-card',     icon: FileText },
+  { label: 'Portal',          href: '/portal',         icon: ExternalLink },
+]
+
+const parentNavItems = [
+  { label: 'My Children',     href: '/switch',         icon: Users },
+  { label: 'Dashboard',       href: '/dashboard',       icon: LayoutDashboard },
+  { label: 'Subjects & Scores', href: '/subjects',      icon: BookOpen },
+  { label: 'School Fees',     href: '/fees',           icon: CreditCard },
+  { label: 'Attendance',      href: '/attendance',      icon: ClipboardCheck },
+  { label: 'Report Card',     href: '/report-card',     icon: FileText },
+  { label: 'Portal',          href: '/portal',         icon: ExternalLink },
+]
+
 export default function Sidebar() {
   const pathname = usePathname()
-  const { user, logout } = useAuthStore()
+  const { role } = useAuthStore()
+  const navItems =
+    role === 'student' ? studentNavItems :
+    role === 'parent' ? parentNavItems :
+    adminNavItems
 
   return (
     <aside className="sidebar">
-      {/* Logo */}
-      <div className="sidebar-logo">
-        <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-             style={{ background: 'rgba(201,160,32,0.15)', border: '1px solid rgba(201,160,32,0.3)' }}>
-          <BookOpen size={18} style={{ color: '#C9A020' }} />
-        </div>
-        <div>
-          <div className="font-bold text-white text-base leading-tight">EduManage</div>
-          <div className="text-xs leading-tight" style={{ color: 'rgba(255,255,255,0.45)' }}>School Administration</div>
-        </div>
-      </div>
-
-      {/* Term Badge */}
-      <div className="px-4 py-2.5">
-        <div className="rounded-lg px-3 py-2 text-xs font-medium"
-             style={{ background: 'rgba(201,160,32,0.10)', color: '#C9A020', border: '1px solid rgba(201,160,32,0.2)' }}>
-          📅 2025 – Spring Term
-        </div>
-      </div>
-
-      {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-2 space-y-0.5">
         {navItems.map(({ label, href, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + '/')
@@ -66,21 +69,6 @@ export default function Sidebar() {
           )
         })}
       </nav>
-
-      {/* Bottom: User + Logout */}
-      <div className="border-t p-3 space-y-1" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-        <Link href="/profile" className="sidebar-nav-item">
-          <div className="w-6 h-6 rounded-full bg-gold/30 flex items-center justify-center text-xs font-bold"
-               style={{ color: '#C9A020' }}>
-            {user ? (user.name?.[0] ?? 'A') : 'A'}
-          </div>
-          <span>Admin Profile</span>
-        </Link>
-        <button onClick={logout} className="sidebar-nav-item w-full text-left hover:text-red-400">
-          <LogOut size={16} />
-          <span>Logout</span>
-        </button>
-      </div>
     </aside>
   )
 }
