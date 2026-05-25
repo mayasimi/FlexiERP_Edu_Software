@@ -1,5 +1,9 @@
 /**
+<<<<<<< HEAD
  * EduManage API Client
+=======
+ * FlexiSoftware API Client
+>>>>>>> 57b1739e (Full Code Base of EduSoftware)
  * Connects Next.js frontend to PHP Laravel backend
  * Base URL: NEXT_PUBLIC_API_URL (default: http://localhost:8000/api)
  */

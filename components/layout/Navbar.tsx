@@ -7,6 +7,8 @@ import { Bell, BookOpen, ChevronDown, LogOut, Settings } from 'lucide-react'
 import { useAuthStore } from '@/lib/auth-store'
 import { getInitials } from '@/lib/utils'
 
+import { useAuth } from '@/context/AuthContext';
+
 const GOLD = '#C9A020'
 const BORDER = '#E8E4DC'
 
@@ -41,20 +43,27 @@ function formatDateTime(date: Date) {
 }
 
 export default function Navbar({ userName, userRole, userEmail, settingsHref = '/settings' }: NavbarProps) {
+
   const { user, role, logout } = useAuthStore()
-  const [now, setNow] = useState<Date | null>(null)
+  const [mounted, setMounted] = useState(false)
+  const [now, setNow] = useState(() => new Date())
   const [showNotifications, setShowNotifications] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
   const [logoFailed, setLogoFailed] = useState(false)
   const navRef = useRef<HTMLElement>(null)
 
-  const unreadCount = notifications.filter((notification) => !notification.isRead).length
-  const displayName = userName || user?.name || 'Admin User'
-  const displayRole = userRole || (role ? role.charAt(0).toUpperCase() + role.slice(1) : 'Administrator')
-  const displayEmail = userEmail || user?.email || 'admin@school.edu'
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length
+
+  // Only use real user data after client has mounted
+  const displayName  = userName  || (mounted ? user?.name  : null) || 'Admin User'
+  const displayRole  = userRole  || (mounted && user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Administrator')
+  const displayEmail = userEmail || (mounted ? user?.email : null) || 'admin@school.edu'
 
   useEffect(() => {
-    setNow(new Date())
     const timer = window.setInterval(() => setNow(new Date()), 60_000)
     return () => window.clearInterval(timer)
   }, [])
@@ -128,13 +137,22 @@ export default function Navbar({ userName, userRole, userEmail, settingsHref = '
           )}
         </div>
         <div>
+<<<<<<< HEAD
           <div style={{ fontSize: 16, fontWeight: 700, color: '#0D0D0D', lineHeight: 1.1 }}>Flexi Software</div>
+=======
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#0D0D0D', lineHeight: 1.1 }}>FlexiSoftware</div>
+>>>>>>> 57b1739e (Full Code Base of EduSoftware)
           <div style={{ fontSize: 12, color: '#6B6660', lineHeight: 1.2 }}>School Administration</div>
         </div>
       </div>
 
+<<<<<<< HEAD
       <div style={{ color: '#4B4640', fontSize: 14, fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', flex: 1, minHeight: '1.5em' }}>
         {now ? formatDateTime(now) : ''}
+=======
+      <div style={{ color: '#4B4640', fontSize: 14, fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', flex: 1 }}>
+        {formatDateTime(now)}
+>>>>>>> 57b1739e (Full Code Base of EduSoftware)
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, minWidth: 290 }}>
@@ -301,7 +319,11 @@ export default function Navbar({ userName, userRole, userEmail, settingsHref = '
               </Link>
               <button
                 type="button"
+<<<<<<< HEAD
                 onClick={logout}
+=======
+                onClick={() => logout()}
+>>>>>>> 57b1739e (Full Code Base of EduSoftware)
                 onMouseEnter={(event) => { event.currentTarget.style.background = '#FEF2F2' }}
                 onMouseLeave={(event) => { event.currentTarget.style.background = 'white' }}
                 style={{
