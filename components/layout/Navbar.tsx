@@ -6,10 +6,8 @@ import Link from 'next/link'
 import { Bell, BookOpen, ChevronDown, LogOut, Settings } from 'lucide-react'
 import { useAuthStore } from '@/lib/auth-store'
 import { getInitials } from '@/lib/utils'
-<<<<<<< HEAD
-=======
+
 import { useAuth } from '@/context/AuthContext';
->>>>>>> 57b1739e (Full Code Base of EduSoftware)
 
 const GOLD = '#C9A020'
 const BORDER = '#E8E4DC'
@@ -45,37 +43,27 @@ function formatDateTime(date: Date) {
 }
 
 export default function Navbar({ userName, userRole, userEmail, settingsHref = '/settings' }: NavbarProps) {
-<<<<<<< HEAD
-  const { user, role, logout } = useAuthStore()
-  const [now, setNow] = useState<Date | null>(null)
-=======
-  // const { user, role, logout } = useAuthStore()
-  const { user, logout } = useAuth(); 
 
-  console.log('Navbar user:', user);
-  
+  const { user, role, logout } = useAuthStore()
+  const [mounted, setMounted] = useState(false)
   const [now, setNow] = useState(() => new Date())
->>>>>>> 57b1739e (Full Code Base of EduSoftware)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
   const [logoFailed, setLogoFailed] = useState(false)
   const navRef = useRef<HTMLElement>(null)
 
-  const unreadCount = notifications.filter((notification) => !notification.isRead).length
-  const displayName = userName || user?.name || 'Admin User'
-<<<<<<< HEAD
-  const displayRole = userRole || (role ? role.charAt(0).toUpperCase() + role.slice(1) : 'Administrator')
-  const displayEmail = userEmail || user?.email || 'admin@school.edu'
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length
+
+  // Only use real user data after client has mounted
+  const displayName  = userName  || (mounted ? user?.name  : null) || 'Admin User'
+  const displayRole  = userRole  || (mounted && user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Administrator')
+  const displayEmail = userEmail || (mounted ? user?.email : null) || 'admin@school.edu'
 
   useEffect(() => {
-    setNow(new Date())
-=======
-  const displayRole  = userRole  || (user?.role  ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Administrator')
-  const displayEmail = userEmail || user?.email || 'admin@school.edu'
-
-
-  useEffect(() => {
->>>>>>> 57b1739e (Full Code Base of EduSoftware)
     const timer = window.setInterval(() => setNow(new Date()), 60_000)
     return () => window.clearInterval(timer)
   }, [])

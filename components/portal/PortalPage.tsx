@@ -1,14 +1,12 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Navbar from '@/components/layout/Navbar'
 import AppFooter from '@/components/layout/AppFooter'
 import PortalSidebar from './PortalSidebar'
 import { Dashboard, Subjects, Fees, Attendance, ReportCard, ParentSwitch } from './PortalViews'
 import { PageType, RoleType } from './portalTypes'
-<<<<<<< HEAD
-=======
-import { useAuth } from '@/context/AuthContext';
->>>>>>> 57b1739e (Full Code Base of EduSoftware)
+
+import { useAuthStore } from '@/lib/auth-store';
 
 const PAGE_TITLES: Record<PageType, string> = {
   dashboard: 'Dashboard Overview',
@@ -20,15 +18,8 @@ const PAGE_TITLES: Record<PageType, string> = {
 }
 
 export default function PortalPage() {
-<<<<<<< HEAD
-  const [role, setRole] = useState<RoleType>('student')
-  const [page, setPage] = useState<PageType>('dashboard')
-  const [activeChild, setActiveChild] = useState(0)
-  const portalUser = role === 'parent'
-    ? { name: 'Parent User', email: 'parent@school.edu', role: 'Parent' }
-    : { name: 'Student User', email: 'student@school.edu', role: 'Student' }
-=======
-  const { user, logout } = useAuth(); 
+
+  const { user, logout } = useAuthStore();
   const [role, setRole] = useState<RoleType>('student')
   const [page, setPage] = useState<PageType>('dashboard')
   const [activeChild, setActiveChild] = useState(0)
@@ -36,10 +27,24 @@ export default function PortalPage() {
   //   ? { name: 'Parent User', email: 'parent@school.edu', role: 'Parent' }
   //   : { name: 'Student User', email: 'student@school.edu', role: 'Student' }
 
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Don't render anything until client has hydrated
+  if (!mounted) {
+    return (
+      <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh' }}>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
   const displayName =  user?.name || 'Student User'
   const displayRole  = user?.role  ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Student'
   const displayEmail = user?.email || 'student@school.edu'
->>>>>>> 57b1739e (Full Code Base of EduSoftware)
 
   const content = (() => {
     switch (page) {
@@ -67,15 +72,9 @@ export default function PortalPage() {
 
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <Navbar
-<<<<<<< HEAD
-            userName={portalUser.name}
-            userEmail={portalUser.email}
-            userRole={portalUser.role}
-=======
             userName={displayName}
             userEmail={displayEmail}
             userRole={displayRole}
->>>>>>> 57b1739e (Full Code Base of EduSoftware)
             settingsHref="/portal"
           />
 
