@@ -1,10 +1,15 @@
 'use client'
+<<<<<<< HEAD
 import { useEffect, useState } from 'react'
+=======
+import { useEffect, useState,type FormEvent } from 'react'
+>>>>>>> 57b1739e (Full Code Base of EduSoftware)
 import { useRouter } from 'next/navigation'
 import { Eye, EyeOff, BookOpen } from 'lucide-react'
 import { useAuthStore } from '@/lib/auth-store'
 import AppFooter from '@/components/layout/AppFooter'
 import toast from 'react-hot-toast'
+<<<<<<< HEAD
 
 export default function LoginPage() {
   const router = useRouter()
@@ -39,6 +44,37 @@ export default function LoginPage() {
       }
     } catch {
       toast.error('Invalid credentials. Please try again.')
+=======
+import { useAuth } from '@/context/AuthContext';
+import { ApiError } from '@/lib/api/client';
+
+export default function LoginPage() {
+
+  const { login } = useAuth();
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [remember, setRemember] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setIsLoading(true);
+    try {
+      await login({ email, password });
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message);
+      } else {
+        setError('Unable to reach the server. Please try again.');
+      }
+    } finally {
+      setIsLoading(false);
+>>>>>>> 57b1739e (Full Code Base of EduSoftware)
     }
   }
 
@@ -65,18 +101,39 @@ export default function LoginPage() {
 
         <h1 className="text-2xl font-bold text-center mb-1" style={{ color: '#0D0D0D' }}>Welcome Back</h1>
         <p className="text-sm text-center mb-7" style={{ color: '#6B6660' }}>Sign in to your account</p>
+<<<<<<< HEAD
+=======
+         
+        {error && (
+          <p role="alert" style={{ color: 'red', margin: 0 }}>
+            {error}
+          </p>
+        )}
+>>>>>>> 57b1739e (Full Code Base of EduSoftware)
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
             <label className="block text-xs font-semibold tracking-widest uppercase mb-2"
                    style={{ color: '#6B6660' }}>Email Address</label>
             <input
+<<<<<<< HEAD
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="admin@school.com"
               required
               className="input"
+=======
+
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="admin@school.com"
+              required
+              autoComplete="email"
+              className="input"
+            
+>>>>>>> 57b1739e (Full Code Base of EduSoftware)
             />
           </div>
 
@@ -99,6 +156,10 @@ export default function LoginPage() {
                 onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
+<<<<<<< HEAD
+=======
+                autoComplete="current-password"
+>>>>>>> 57b1739e (Full Code Base of EduSoftware)
                 className="input pr-11"
               />
               <button type="button" onClick={() => setShowPw(!showPw)}
@@ -133,4 +194,9 @@ export default function LoginPage() {
       <AppFooter compact />
     </div>
   )
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> 57b1739e (Full Code Base of EduSoftware)
 }
