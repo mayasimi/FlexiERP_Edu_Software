@@ -6,6 +6,7 @@ import Avatar from '@/components/ui/Avatar'
 import Card, { CardLabel } from '@/components/ui/Card'
 import GoldBadge from '@/components/ui/GoldBadge'
 import StatCard from '@/components/ui/StatCard'
+import { Dashboard as PortalDashboard } from '@/components/portal/PortalViews'
 
 const mockData = {
   term: '2nd Term',
@@ -431,6 +432,10 @@ export function SchemeOfWorkView() {
 }
 
 export default function StudentDashboard() {
+  return <PortalDashboard role="student" />
+}
+
+function LegacyStudentDashboard() {
   const d = mockData.student
   const totalFeesDue = useMemo(
     () => d.fees.structure.reduce((sum, fee) => sum + fee.amount, 0),
