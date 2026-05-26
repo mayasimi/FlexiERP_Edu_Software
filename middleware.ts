@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const TOKEN_KEY = 'flexi_token';
-const PROTECTED = ['/dashboard', '/instructor-dashboard', '/portal'];
+const PROTECTED = ['/instructor-dashboard'];
 const LOGIN_PATH = '/login';
 
 export function middleware(request: NextRequest) {
@@ -20,5 +20,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/instructor-dashboard/:path*', '/portal/:path*'],
+  matcher: ['/instructor-dashboard/:path*'],
 };

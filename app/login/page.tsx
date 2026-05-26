@@ -123,7 +123,7 @@ export default function LoginPage() {
         </form>
 
         <div className="mt-6 text-center">
-          <a href="#" className="text-sm font-medium" style={{ color: '#C9A020' }}>
+          <a href="/portal" className="text-sm font-medium" style={{ color: '#C9A020' }}>
             Try demo version
           </a>
         </div>
