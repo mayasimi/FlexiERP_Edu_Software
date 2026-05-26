@@ -6,3 +6,4 @@ build/
 .env
 dist/
 *.node
+node_modules/
