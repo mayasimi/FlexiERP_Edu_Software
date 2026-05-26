@@ -1,19 +1,16 @@
 'use client'
-import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/components/layout/AppLayout'
 import Topbar from '@/components/layout/Topbar'
 import { dashboardApi } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
-
+import { useAuthStore } from '@/lib/auth-store'
 import ParentDashboard from '@/components/dashboard/ParentDashboard'
 import StudentDashboard from '@/components/dashboard/StudentDashboard'
 import {
   Users, UserCheck, Building2, ClipboardCheck,
   UserPlus, CreditCard, Megaphone, FileText, TrendingUp, TrendingDown, Minus, Zap
 } from 'lucide-react'
-
-import { useAuthStoreMounted } from '@/lib/auth-store';
 
 // ── Fallback mock data (used until Laravel API is wired) ──────────────────
 const MOCK_STATS = {
@@ -35,31 +32,18 @@ const activityDot: Record<string, string> = {
 }
 
 export default function DashboardPage() {
-
-  const { user, role, isLoading, mounted } = useAuthStoreMounted();
-  // const role = user?.role;
-
   const { data: stats = MOCK_STATS } = useQuery({
     queryKey: ['dashboard-overview'],
     queryFn: () => dashboardApi.getOverview().then(r => r.data),
     placeholderData: MOCK_STATS,
-    enabled: !!user,  
   })
-
   const { data: activities = MOCK_ACTIVITIES } = useQuery({
     queryKey: ['dashboard-activities'],
     queryFn: () => dashboardApi.getRecentActivities(10).then(r => r.data),
     placeholderData: MOCK_ACTIVITIES,
-    enabled: !!user,   
   })
 
-  if (!mounted || isLoading) {
-    return (
-      <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh' }}>
-        <p>Loading...</p>
-      </div>
-    )
-  }
+  const { role } = useAuthStore()
 
   if (role === 'parent') {
     return (
@@ -79,7 +63,6 @@ export default function DashboardPage() {
 
   return (
     <AppLayout>
-
       <Topbar action={{ label: 'New Entry', onClick: () => {} }} />
 
       <div className="page-header animate-in">

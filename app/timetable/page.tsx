@@ -1,195 +1,55 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/components/layout/AppLayout'
 import Topbar from '@/components/layout/Topbar'
-import toast from 'react-hot-toast'
-import { Sparkles, MapPin, Pencil, X } from 'lucide-react'
+import { timetableApi } from '@/lib/api'
+import { Sparkles, MapPin } from 'lucide-react'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const
 type Day = typeof DAYS[number]
 
-type StoredSubject = {
-  id: string
-  name: string
-  teacher: string
-  code?: string
-  type?: string
+const MOCK_TIMETABLE: Record<string, Array<{ time: string; subject: string; teacher: string; room: string; live?: boolean } | { time: string; type: 'break' | 'free'; label: string }>> = {
+  Monday: [
+    { time: '08:00 AM', subject: 'Advanced Physics', teacher: 'Dr. R. Feynman', room: 'Lab 4A', live: true },
+    { time: '09:00 AM', subject: 'Chemistry', teacher: 'Dr. M. Curie', room: 'Lab 1C', live: true },
+    { time: '10:00 AM', type: 'break', label: 'Morning Break' },
+    { time: '10:30 AM', subject: 'Physical Ed.', teacher: 'Coach Carter', room: 'Gymnasium' },
+  ],
+  Tuesday: [
+    { time: '08:00 AM', subject: 'Mathematics II', teacher: 'Prof. A. Turing', room: 'Room 302' },
+    { time: '09:00 AM', subject: 'World History', teacher: 'Mr. H. Zinn', room: 'Room 210' },
+    { time: '10:00 AM', type: 'break', label: 'Morning Break' },
+    { time: '10:30 AM', type: 'free', label: 'Study Hall' },
+  ],
+  Wednesday: [
+    { time: '08:00 AM', subject: 'Literature', teacher: 'Ms. V. Woolf', room: 'Room 105' },
+    { time: '09:00 AM', type: 'free', label: 'Free Period' },
+    { time: '10:00 AM', type: 'break', label: 'Morning Break' },
+    { time: '10:30 AM', subject: 'Biology', teacher: 'Dr. C. Darwin', room: 'Lab 3B' },
+  ],
+  Thursday: [
+    { time: '08:00 AM', subject: 'Advanced Physics', teacher: 'Dr. R. Feynman', room: 'Lab 4A' },
+    { time: '09:00 AM', subject: 'Chemistry', teacher: 'Dr. M. Curie', room: 'Lab 1C' },
+    { time: '10:00 AM', type: 'break', label: 'Morning Break' },
+    { time: '10:30 AM', subject: 'Physical Ed.', teacher: 'Coach Carter', room: 'Gymnasium' },
+  ],
+  Friday: [
+    { time: '08:00 AM', subject: 'Computer Sci', teacher: 'Mr. C. Babbage', room: 'Lab 2B' },
+    { time: '09:00 AM', subject: 'Mathematics II', teacher: 'Prof. A. Turing', room: 'Room 302' },
+    { time: '10:00 AM', type: 'break', label: 'Morning Break' },
+    { time: '10:30 AM', subject: 'Literature', teacher: 'Ms. V. Woolf', room: 'Room 105' },
+  ],
 }
 
-type TimetableCell =
-  | { kind: 'lesson'; id: string; subjectId: string; subject: string; teacher: string; room: string }
-  | { kind: 'free'; id: string; label: string }
-
-type TimetableGrid = Record<Day, Record<string, TimetableCell | null>>
-
-const TIMES = ['08:00 AM', '09:00 AM', '10:00 AM', '10:30 AM'] as const
-const BREAK_TIME = '10:00 AM'
-const SUBJECTS_STORAGE_KEY = 'flexierp_subjects'
-
-function timetableStorageKey(cls: string, section: string) {
-  return `flexierp_timetable_${cls}_${section}`.replace(/\s+/g, '_')
-}
-
-function safeJsonParse<T>(raw: string | null): T | null {
-  if (!raw) return null
-  try {
-    return JSON.parse(raw) as T
-  } catch {
-    return null
-  }
+function isBreak(e: typeof MOCK_TIMETABLE['Monday'][0]): e is { time: string; type: 'break' | 'free'; label: string } {
+  return 'type' in e
 }
 
 export default function TimetablePage() {
   const [activeDay, setActiveDay] = useState<Day>('Monday')
   const [cls, setCls] = useState('Grade 10')
   const [section, setSection] = useState('Section A (Science)')
-  const [grid, setGrid] = useState<TimetableGrid>(() => {
-    const init: TimetableGrid = { Monday: {}, Tuesday: {}, Wednesday: {}, Thursday: {}, Friday: {} }
-    DAYS.forEach(d => {
-      TIMES.forEach(t => {
-        init[d][t] = t === BREAK_TIME ? null : { kind: 'free', id: `${d}-${t}`, label: 'Free Period' }
-      })
-    })
-    return init
-  })
-  const [editingSlot, setEditingSlot] = useState<{ day: Day; time: string } | null>(null)
-  const [editSubjectId, setEditSubjectId] = useState<string>('__free__')
-  const [editRoom, setEditRoom] = useState<string>('Room 101')
-
-  const subjects = useMemo(() => {
-    const parsed = safeJsonParse<StoredSubject[]>(typeof window !== 'undefined' ? localStorage.getItem(SUBJECTS_STORAGE_KEY) : null)
-    if (Array.isArray(parsed) && parsed.length > 0) return parsed
-    return [] as StoredSubject[]
-  }, [])
-
-  useEffect(() => {
-    const saved = safeJsonParse<TimetableGrid>(localStorage.getItem(timetableStorageKey(cls, section)))
-    if (saved) {
-      setGrid(saved)
-    }
-  }, [cls, section])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(timetableStorageKey(cls, section), JSON.stringify(grid))
-    } catch {
-      // ignore
-    }
-  }, [cls, section, grid])
-
-  const handleGenerate = () => {
-    const stored = safeJsonParse<StoredSubject[]>(localStorage.getItem(SUBJECTS_STORAGE_KEY)) || []
-    if (stored.length === 0) {
-      toast.error('No subjects found. Please add subjects in Academics first.')
-      return
-    }
-
-    const newGrid: TimetableGrid = { Monday: {}, Tuesday: {}, Wednesday: {}, Thursday: {}, Friday: {} }
-    let idx = 0
-    DAYS.forEach(d => {
-      TIMES.forEach(t => {
-        if (t === BREAK_TIME) {
-          newGrid[d][t] = null
-          return
-        }
-        const s = stored[idx % stored.length]
-        idx++
-        newGrid[d][t] = {
-          kind: 'lesson',
-          id: `${d}-${t}`,
-          subjectId: s.id,
-          subject: s.name,
-          teacher: s.teacher || 'Unassigned',
-          room: 'Room 101',
-        }
-      })
-    })
-    setGrid(newGrid)
-    toast.success(`Timetable generated for ${cls} • ${section}`)
-  }
-
-  const handleDragStart = (day: Day, time: string) => (e: React.DragEvent) => {
-    const cell = grid[day][time]
-    if (!cell || cell.kind !== 'lesson') return
-    e.dataTransfer.setData('application/json', JSON.stringify({ fromDay: day, fromTime: time }))
-    e.dataTransfer.effectAllowed = 'move'
-  }
-
-  const handleDrop = (day: Day, time: string) => (e: React.DragEvent) => {
-    e.preventDefault()
-    if (time === BREAK_TIME) return
-    const raw = e.dataTransfer.getData('application/json')
-    const parsed = safeJsonParse<{ fromDay: Day; fromTime: string }>(raw)
-    if (!parsed) return
-    const { fromDay, fromTime } = parsed
-    if (fromDay === day && fromTime === time) return
-    if (fromTime === BREAK_TIME) return
-
-    setGrid(prev => {
-      const fromCell = prev[fromDay][fromTime]
-      const toCell = prev[day][time]
-      const next: TimetableGrid = { ...prev, [fromDay]: { ...prev[fromDay] }, [day]: { ...prev[day] } }
-      next[fromDay][fromTime] = toCell
-      next[day][time] = fromCell
-      return next
-    })
-  }
-
-  const openEdit = (day: Day, time: string) => {
-    if (time === BREAK_TIME) return
-    const cell = grid[day][time]
-    setEditingSlot({ day, time })
-    if (!cell || cell.kind !== 'lesson') {
-      setEditSubjectId('__free__')
-      setEditRoom('Room 101')
-      return
-    }
-    setEditSubjectId(cell.subjectId)
-    setEditRoom(cell.room)
-  }
-
-  const saveEdit = () => {
-    if (!editingSlot) return
-    const { day, time } = editingSlot
-    if (time === BREAK_TIME) return
-
-    if (editSubjectId === '__free__') {
-      setGrid(prev => ({
-        ...prev,
-        [day]: {
-          ...prev[day],
-          [time]: { kind: 'free', id: `${day}-${time}`, label: 'Free Period' },
-        },
-      }))
-      setEditingSlot(null)
-      toast.success('Slot updated')
-      return
-    }
-
-    const stored = safeJsonParse<StoredSubject[]>(localStorage.getItem(SUBJECTS_STORAGE_KEY)) || []
-    const s = stored.find(x => x.id === editSubjectId)
-    if (!s) {
-      toast.error('Selected subject not found. Please refresh subjects.')
-      return
-    }
-
-    setGrid(prev => ({
-      ...prev,
-      [day]: {
-        ...prev[day],
-        [time]: {
-          kind: 'lesson',
-          id: `${day}-${time}`,
-          subjectId: s.id,
-          subject: s.name,
-          teacher: s.teacher || 'Unassigned',
-          room: editRoom || 'Room 101',
-        },
-      },
-    }))
-    setEditingSlot(null)
-    toast.success('Slot updated')
-  }
 
   return (
     <AppLayout>
@@ -219,7 +79,7 @@ export default function TimetablePage() {
                 </select>
               </div>
             </div>
-          <div className="flex gap-2">
+            <div className="flex gap-2">
               {DAYS.map(day => (
                 <button key={day} onClick={() => setActiveDay(day)}
                         className="px-4 py-2 rounded-lg text-sm font-medium transition-all"
@@ -232,7 +92,7 @@ export default function TimetablePage() {
                 </button>
               ))}
             </div>
-            <button onClick={handleGenerate} className="btn-gold flex items-center gap-1.5">
+            <button className="btn-gold flex items-center gap-1.5">
               <Sparkles size={14} /> Generate Timetable
             </button>
           </div>
@@ -251,8 +111,12 @@ export default function TimetablePage() {
                 </tr>
               </thead>
               <tbody>
-                {TIMES.map((time) => {
-                  if (time === BREAK_TIME) {
+                {['08:00 AM', '09:00 AM', '10:00 AM', '10:30 AM'].map((time, ri) => {
+                  // Check if this row is a special row in Monday's data
+                  const mondayEntry = MOCK_TIMETABLE.Monday.find(e => e.time === time)
+                  const isBreakRow = mondayEntry && isBreak(mondayEntry) && mondayEntry.type === 'break'
+
+                  if (isBreakRow) {
                     return (
                       <tr key={time} style={{ background: '#F7F6F3' }}>
                         <td className="px-4 py-2 text-xs font-mono" style={{ color: '#A09080', borderBottom: '1px solid #E4E1D8' }}>{time}</td>
@@ -267,44 +131,31 @@ export default function TimetablePage() {
                     <tr key={time} style={{ borderBottom: '1px solid #E4E1D8' }}>
                       <td className="px-4 py-3 text-xs font-mono align-top pt-4" style={{ color: '#A09080' }}>{time}</td>
                       {DAYS.map(day => {
-                        const cell = grid[day][time]
+                        const entry = MOCK_TIMETABLE[day].find(e => e.time === time)
+                        if (!entry) return <td key={day} className="px-3 py-3" />
+                        if (isBreak(entry)) {
+                          return (
+                            <td key={day} className="px-3 py-3">
+                              <div className="rounded-lg px-3 py-2.5 text-center text-xs" style={{ background: '#F7F6F3', color: '#6B6660' }}>
+                                {entry.label}
+                              </div>
+                            </td>
+                          )
+                        }
                         return (
-                          <td
-                            key={day}
-                            className="px-3 py-3"
-                            onDragOver={e => e.preventDefault()}
-                            onDrop={handleDrop(day, time)}
-                          >
-                            {cell?.kind === 'lesson' ? (
-                              <div
-                                draggable
-                                onDragStart={handleDragStart(day, time)}
-                                onClick={() => openEdit(day, time)}
-                                className="rounded-xl p-3 transition-all hover:shadow-md cursor-pointer relative"
-                                style={{ background: 'white', border: '1px solid #E4E1D8' }}
-                              >
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); openEdit(day, time) }}
-                                  className="absolute top-2 right-2 p-1 rounded-md hover:bg-gray-100"
-                                  title="Edit slot"
-                                >
-                                  <Pencil size={12} style={{ color: '#6B6660' }} />
-                                </button>
-                                <p className="font-bold text-sm mb-1">{cell.subject}</p>
-                                <p className="text-xs mb-1.5" style={{ color: '#6B6660' }}>{cell.teacher}</p>
-                                <div className="flex items-center gap-1 text-xs" style={{ color: '#A09080' }}>
-                                  <MapPin size={10} /> {cell.room}
-                                </div>
+                          <td key={day} className="px-3 py-3">
+                            <div className="rounded-xl p-3 transition-all hover:shadow-md cursor-pointer relative"
+                                 style={{ background: 'white', border: '1px solid #E4E1D8' }}>
+                              {entry.live && (
+                                <span className="absolute top-2 right-2 text-xs px-1.5 py-0.5 rounded-full font-semibold"
+                                      style={{ background: '#ECFDF5', color: '#059669' }}>LIVE</span>
+                              )}
+                              <p className="font-bold text-sm mb-1">{entry.subject}</p>
+                              <p className="text-xs mb-1.5" style={{ color: '#6B6660' }}>{entry.teacher}</p>
+                              <div className="flex items-center gap-1 text-xs" style={{ color: '#A09080' }}>
+                                <MapPin size={10} /> {entry.room}
                               </div>
-                            ) : (
-                              <div
-                                onClick={() => openEdit(day, time)}
-                                className="rounded-lg px-3 py-2.5 text-center text-xs cursor-pointer"
-                                style={{ background: '#F7F6F3', color: '#6B6660', border: '1px dashed #E4E1D8' }}
-                              >
-                                Free Period
-                              </div>
-                            )}
+                            </div>
                           </td>
                         )
                       })}
@@ -316,42 +167,6 @@ export default function TimetablePage() {
           </div>
         </div>
       </div>
-
-      {editingSlot && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden">
-            <div className="px-8 py-6 border-b flex justify-between items-center bg-gray-50/50">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Edit Timetable Slot</h2>
-                <p className="text-xs text-gray-500 mt-1 uppercase tracking-widest">{editingSlot.day} • {editingSlot.time}</p>
-              </div>
-              <button onClick={() => setEditingSlot(null)} className="p-2 hover:bg-gray-200 rounded-full">
-                <X size={20} className="text-gray-500" />
-              </button>
-            </div>
-
-            <div className="p-8 space-y-4">
-              <div>
-                <label className="label">Subject</label>
-                <select value={editSubjectId} onChange={e => setEditSubjectId(e.target.value)} className="select w-full">
-                  <option value="__free__">Free Period</option>
-                  {(safeJsonParse<StoredSubject[]>(localStorage.getItem(SUBJECTS_STORAGE_KEY)) || []).map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label">Room</label>
-                <input value={editRoom} onChange={e => setEditRoom(e.target.value)} className="input w-full" />
-              </div>
-              <div className="flex justify-end gap-3 pt-2">
-                <button onClick={() => setEditingSlot(null)} className="btn-outline px-6">Cancel</button>
-                <button onClick={saveEdit} className="btn-gold px-8">Save</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </AppLayout>
   )
 }

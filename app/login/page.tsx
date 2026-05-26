@@ -1,7 +1,8 @@
 'use client'
-import { useEffect, useState,type FormEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Eye, EyeOff, BookOpen } from 'lucide-react'
+import { useAuthStore } from '@/lib/auth-store'
 import AppFooter from '@/components/layout/AppFooter'
 import toast from 'react-hot-toast'
 
@@ -38,32 +39,8 @@ export default function LoginPage() {
       }
     } catch {
       toast.error('Invalid credentials. Please try again.')
-
-import { useAuthStore } from '@/lib/auth-store';
-import { ApiError } from '@/lib/api/client';
-import Image from 'next/image';
-
-export default function LoginPage() {
-
-  const { login, isLoading } = useAuthStore()
-
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPw, setShowPw] = useState(false);
-  const [remember, setRemember] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // const [isLoading, setIsLoading] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent) {
-  e.preventDefault()
-  setError(null)
-  try {
-    await login(email, password)
-    // redirect is handled inside useAuthStore.login()
-  } catch (err: any) {
-    setError(err?.response?.data?.message ?? 'Invalid credentials.')
+    }
   }
-}
 
   return (
     <div className="min-h-screen flex flex-col"
@@ -71,15 +48,15 @@ export default function LoginPage() {
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-10">
 
       {/* Logo */}
-      <div className="flex items-center justify-center gap-3 mb-8">
-          <Image
-            src="/FLEXI_LOGO.png"
-            alt="FlexiERP Logo"
-            width={200}
-            height={200}
-            priority
-            className="object-contain"
-          />
+      <div className="flex items-center gap-3 mb-8">
+        <div className="w-11 h-11 rounded-xl flex items-center justify-center"
+             style={{ background: 'rgba(201,160,32,0.15)', border: '2px solid rgba(201,160,32,0.4)' }}>
+          <BookOpen size={20} style={{ color: '#C9A020' }} />
+        </div>
+        <div>
+          <span className="text-2xl font-bold" style={{ color: '#0D0D0D' }}>EduManage</span>
+          <span className="text-2xl font-bold" style={{ color: '#C9A020' }}>.</span>
+        </div>
       </div>
 
       {/* Card */}
@@ -88,12 +65,6 @@ export default function LoginPage() {
 
         <h1 className="text-2xl font-bold text-center mb-1" style={{ color: '#0D0D0D' }}>Welcome Back</h1>
         <p className="text-sm text-center mb-7" style={{ color: '#6B6660' }}>Sign in to your account</p>
-         
-        {error && (
-          <p role="alert" style={{ color: 'red', margin: 0 }}>
-            {error}
-          </p>
-        )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
@@ -102,10 +73,9 @@ export default function LoginPage() {
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={e => setEmail(e.target.value)}
               placeholder="admin@school.com"
               required
-              autoComplete="email"
               className="input"
             />
           </div>
@@ -129,7 +99,6 @@ export default function LoginPage() {
                 onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
-                autoComplete="current-password"
                 className="input pr-11"
               />
               <button type="button" onClick={() => setShowPw(!showPw)}

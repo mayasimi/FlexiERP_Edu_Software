@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # EduManage – Next.js Frontend
 
 > School Management System — **Next.js 14 (App Router)** frontend connecting to **PHP Laravel** backend via REST API.
@@ -255,6 +254,3 @@ The `/report-card` page includes a print stylesheet — clicking "Print Report C
 ---
 
 *EduManage Administration System V2.4.1 — Built with Next.js 14 + PHP Laravel*
-=======
-# FlexiERP_Edu_Software
->>>>>>> f8b899082f18663703fa5631f2f0f181be3fdf08

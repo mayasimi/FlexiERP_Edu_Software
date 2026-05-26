@@ -4,20 +4,34 @@ import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/components/layout/AppLayout'
 import { messagingApi } from '@/lib/api'
 import { getInitials } from '@/lib/utils'
-import { adminMockViews } from '@/lib/admin-mock-db'
 import {
   Pencil, Inbox, Send, FileText, Users,
   Bell, Mail, Calendar, Trash2, Reply, Forward,
   AlertCircle, CheckCircle, User
 } from 'lucide-react'
 
-const MOCK_INBOX = adminMockViews.messaging.inbox
-const MOCK_MESSAGE = adminMockViews.messaging.message
+const MOCK_INBOX = [
+  { id: '1', sender: 'Dr. Emily Chen', subject: 'Q3 Syllabus Updates Needed', preview: 'Please review the attached changes for t…', time: '09:42 AM', read: false, label: 'Faculty' },
+  { id: '2', sender: 'Admissions Office', subject: 'Incoming Freshman Orientation', preview: 'The schedule for next week\'s orientation i…', time: 'Yesterday', read: true, label: null },
+  { id: '3', sender: 'Prof. Marcus Johnson', subject: 'Lab Equipment Requisition', preview: 'I have submitted the forms for the new mi…', time: 'Mon', read: true, label: 'Urgent' },
+]
+
+const MOCK_MESSAGE = {
+  id: '2',
+  sender: 'Admissions Office',
+  senderEmail: 'admissions@edumanage.edu',
+  to: 'admin@edumanage.edu',
+  subject: 'Incoming Freshman Orientation',
+  date: 'Oct 24, 2023, 2:30 PM',
+  body: `Hello Administration Team,\n\nThe schedule for next week's incoming freshman orientation has been finalized and approved by the Dean's office. We are expecting approximately 450 new students to attend across the three-day event.\n\nKey highlights that require your attention:\n\n• The opening keynote is scheduled for Monday at 9:00 AM in the Main Auditorium. Please ensure AV setup is completed by 8:00 AM.\n\n• Registration packets are currently being assembled in Room 104 and will be ready for distribution on Sunday evening.\n\n• We need final confirmation on the departmental breakout room assignments. Please review the attached spreadsheet.\n\nLet's schedule a brief 15-minute sync call before the weekend to align on any last-minute logistics.`,
+}
 
 const LABELS = ['Urgent', 'Faculty', 'Students']
 const labelColors: Record<string, string> = {
   Urgent: '#EF4444', Faculty: '#10B981', Students: '#3B82F6'
 }
+
+const BULK_TEMPLATES = ['Tuition Reminder', 'Faculty Handbook', 'Campus Alert']
 
 export default function MessagingPage() {
   const [activeMsg, setActiveMsg] = useState(MOCK_MESSAGE)
@@ -47,6 +61,7 @@ export default function MessagingPage() {
               { id: 'inbox', label: 'Inbox', icon: Inbox, count: 12 },
               { id: 'sent', label: 'Sent', icon: Send },
               { id: 'drafts', label: 'Drafts', icon: FileText, count: 4 },
+              { id: 'bulk', label: 'Bulk Email', icon: Users },
             ].map(item => (
               <button key={item.id} onClick={() => setFolder(item.id as 'inbox' | 'sent' | 'drafts')}
                       className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm transition-all"
@@ -162,6 +177,20 @@ export default function MessagingPage() {
                 </p>
               ))}
             </div>
+          </div>
+        </div>
+
+        {/* Far Right: Bulk Templates */}
+        <div className="w-48 flex-shrink-0 border-l p-4 bg-white" style={{ borderColor: '#E4E1D8' }}>
+          <h3 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: '#6B6660' }}>Bulk Templates</h3>
+          <div className="space-y-2">
+            {BULK_TEMPLATES.map(t => (
+              <div key={t} className="rounded-lg p-3 cursor-pointer hover:border-gold transition-colors"
+                   style={{ background: '#F7F6F3', border: '1px solid #E4E1D8' }}>
+                <p className="text-xs font-semibold mb-1">{t}</p>
+                <div className="h-8 rounded" style={{ background: '#E4E1D8' }} />
+              </div>
+            ))}
           </div>
         </div>
       </div>

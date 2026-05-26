@@ -1,6 +1,5 @@
 'use client'
-
-import { useState, useRef, useEffect } from 'react'
+import { useState } from 'react'
 import Image from 'next/image'
 import {
   LayoutDashboard, ClipboardCheck, CalendarDays, FileText,
@@ -15,7 +14,6 @@ import GroupsSection from './_sections/GroupsSection'
 import PerformanceSection from './_sections/PerformanceSection'
 import LessonPlanSection from './_sections/LessonPlanSection'
 import MessagesSection from './_sections/MessagesSection'
-import { useAuthStore } from '@/lib/auth-store';
 
 const sidebarItems: { id: Section; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -30,36 +28,7 @@ const sidebarItems: { id: Section; label: string; icon: typeof LayoutDashboard }
 
 export default function InstructorDashboardPage() {
   const [activeSection, setActiveSection] = useState<Section>('dashboard')
-  const [showUserMenu, setShowUserMenu] = useState(false)
-  const userMenuRef = useRef<HTMLDivElement>(null)
 
-  // Close popup when clicking outside
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
-        setShowUserMenu(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  const { logout } = useAuthStore();
-
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
-    return (
-      <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh' }}>
-        <p>Loading...</p>
-      </div>
-    );
-  }
-  
   return (
     <div className="flex min-h-screen" style={{ background: '#F7F6F3' }}>
       {/* Instructor Sidebar */}
@@ -84,11 +53,21 @@ export default function InstructorDashboardPage() {
             const active = activeSection === id
             return (
               <button key={id} onClick={() => setActiveSection(id)}
-                className={`flex items-center gap-3 w-full px-4 py-3 mx-2 rounded-lg text-sm transition-all text-left ${!active ? 'hover:text-[#C9A020] hover:bg-[rgba(201,160,32,0.10)]' : ''}`}
+                className="flex items-center gap-3 w-full px-4 py-3 mx-2 rounded-lg text-sm transition-all text-left"
+                onMouseEnter={(event) => {
+                  event.currentTarget.style.color = '#C9A020'
+                  if (!active) {
+                    event.currentTarget.style.background = 'rgba(255,255,255,0.08)'
+                  }
+                }}
+                onMouseLeave={(event) => {
+                  event.currentTarget.style.color = active ? '#C9A020' : '#FFFFFF'
+                  event.currentTarget.style.background = active ? 'rgba(201,160,32,0.15)' : 'transparent'
+                }}
                 style={{
                   width: 'calc(100% - 16px)',
-                  color: active ? '#C9A020' : 'rgba(255, 255, 255, 1)',
-                  background: active ? 'rgba(201,160,32,0.15)' : undefined,
+                  color: active ? '#C9A020' : '#FFFFFF',
+                  background: active ? 'rgba(201,160,32,0.15)' : 'transparent',
                   border: active ? '1px solid rgba(201,160,32,0.30)' : '1px solid transparent',
                 }}>
                 <Icon size={16} />
@@ -106,7 +85,7 @@ export default function InstructorDashboardPage() {
               style={{ background: 'rgba(201,160,32,0.3)', color: '#C9A020' }}>RF</div>
             <span>Dr. R. Feynman</span>
           </div>
-          <button onClick={() => logout()} className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-sm transition-all hover:text-red-400"
+          <button className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-sm transition-all hover:text-red-400"
             style={{ color: 'rgba(255,255,255,0.50)' }}>
             <LogOut size={16} />
             <span>Logout</span>

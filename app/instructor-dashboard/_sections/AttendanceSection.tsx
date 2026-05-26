@@ -9,7 +9,7 @@ const statusColors: Record<AttendanceStatus, { bg: string; text: string; active:
   P: { bg: '#ECFDF5', text: '#065F46', active: '#10B981' },
   A: { bg: '#FEF2F2', text: '#991B1B', active: '#EF4444' },
   L: { bg: '#FFF7ED', text: '#9A3412', active: '#F59E0B' },
-  S: { bg: '#F3F4F6', text: '#4B5563', active: '#9CA3AF' },
+  H: { bg: '#F3F4F6', text: '#4B5563', active: '#9CA3AF' },
 }
 
 export default function AttendanceSection() {
@@ -73,7 +73,7 @@ export default function AttendanceSection() {
   }
 
   // Calculate counts based on current mode
-  const counts = { P: 0, A: 0, L: 0, S: 0 }
+  const counts = { P: 0, A: 0, L: 0, H: 0 }
   MOCK_ATTENDANCE_STUDENTS.forEach(s => {
     const status = getStudentStatus(s.id)
     if (status in counts) counts[status]++
@@ -217,7 +217,7 @@ export default function AttendanceSection() {
                         </td>
                         <td>
                           <div className="flex gap-1">
-                            {(['P', 'A', 'L', 'S'] as AttendanceStatus[]).map(s => {
+                            {(['P', 'A', 'L', 'H'] as AttendanceStatus[]).map(s => {
                               const c = statusColors[s]
                               const isActive = cur === s
                               return (
@@ -268,7 +268,7 @@ export default function AttendanceSection() {
                 { label: 'Present', key: 'P' as AttendanceStatus, color: '#10B981' },
                 { label: 'Absent', key: 'A' as AttendanceStatus, color: '#EF4444' },
                 { label: 'Late', key: 'L' as AttendanceStatus, color: '#F59E0B' },
-                { label: 'Sick', key: 'S' as AttendanceStatus, color: '#9CA3AF' },
+                { label: 'Holiday', key: 'H' as AttendanceStatus, color: '#9CA3AF' },
               ]).map(({ label, key, color }) => (
                 <div key={key} className="flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: '#E4E1D8' }}>
                   <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full" style={{ background: color }} /><span className="text-sm">{label}</span></div>

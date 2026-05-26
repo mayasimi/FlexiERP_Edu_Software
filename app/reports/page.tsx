@@ -3,18 +3,25 @@ import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/components/layout/AppLayout'
 import Topbar from '@/components/layout/Topbar'
 import { reportApi } from '@/lib/api'
-import { adminMockViews } from '@/lib/admin-mock-db'
-import { useState, useMemo } from 'react'
-import { BarChart2, Download, Filter, X, Award, TrendingUp, User } from 'lucide-react'
-import toast from 'react-hot-toast'
+import { useState } from 'react'
+import { BarChart2, Download } from 'lucide-react'
 
-const MOCK_ANALYTICS = adminMockViews.reports
-type TopPerformer = {
-  id: string
-  name: string
-  grade: string
-  section: string
-  score: number
+const MOCK_ANALYTICS = {
+  enrollment: [
+    { q: 'Q1', current: 1200, prev: 900 },
+    { q: 'Q2', current: 1800, prev: 1400 },
+    { q: 'Q3', current: 3200, prev: 2000 },
+    { q: 'Q4', current: 3600, prev: 2400 },
+  ],
+  fee_collected_pct: 82,
+  top_performers: [
+    { name: 'Eleanor Vance', grade: '12th Grade', score: 98.5 },
+    { name: 'Luke Crain', grade: '11th Grade', score: 97.2 },
+    { name: 'Theodora Crain', grade: '10th Grade', score: 96.8 },
+    { name: 'Shirley Crain', grade: '12th Grade', score: 95.0 },
+  ],
+  student_staff_ratio: '1:24',
+  attendance: { students: 94, faculty: 98, support: 92 },
 }
 
 export default function ReportsPage() {
@@ -28,21 +35,9 @@ export default function ReportsPage() {
   const [dateFrom, setDateFrom] = useState('2023-10-01')
   const [dateTo, setDateTo] = useState('2023-10-31')
   const [modules, setModules] = useState({ enrollment: true, financial: true, academic: true })
-  
-  // Top Performers State
-  const [showTopPerformersModal, setShowTopPerformersModal] = useState(false)
-  const [performerGradeFilter, setPerformerGradeFilter] = useState('All Grades')
-
-  const filteredPerformers = useMemo<TopPerformer[]>(() => {
-    const all = data.top_performers as unknown as TopPerformer[]
-    return all.filter((p) => performerGradeFilter === 'All Grades' || p.grade === performerGradeFilter)
-  }, [data.top_performers, performerGradeFilter])
 
   const maxVal = Math.max(...data.enrollment.map((d: typeof MOCK_ANALYTICS['enrollment'][0]) => Math.max(d.current, d.prev)))
 
-  const handleGenerateReport = () => {
-    toast.success(`Generating ${format} for ${Object.keys(modules).filter(k => modules[k as keyof typeof modules]).join(', ')}...`)
-  }
   return (
     <AppLayout>
       <Topbar />
@@ -121,16 +116,14 @@ export default function ReportsPage() {
               <div className="card col-span-1">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold">Top Performers</h3>
-                  <button onClick={() => setShowTopPerformersModal(true)} className="text-xs font-semibold hover:underline" style={{ color: '#C9A020' }}>
-                    View All
-                  </button>
+                  <a href="#" className="text-xs" style={{ color: '#C9A020' }}>View All</a>
                 </div>
                 <div className="space-y-0">
                   <div className="grid grid-cols-3 text-xs font-semibold uppercase tracking-wider pb-2 border-b mb-2" style={{ color: '#6B6660', borderColor: '#E4E1D8' }}>
                     <span>Student</span><span>Grade</span><span>Score</span>
                   </div>
-                  {data.top_performers.slice(0, 4).map((p: any, i: number) => (
-                    <div key={p.id} className={`grid grid-cols-3 text-sm py-2.5 ${i < 3 ? 'border-b' : ''}`}
+                  {data.top_performers.map((p: typeof MOCK_ANALYTICS['top_performers'][0], i: number) => (
+                    <div key={p.name} className={`grid grid-cols-3 text-sm py-2.5 ${i < data.top_performers.length - 1 ? 'border-b' : ''}`}
                          style={{ borderColor: '#E4E1D8' }}>
                       <span className="font-medium truncate">{p.name}</span>
                       <span style={{ color: '#6B6660' }}>{p.grade}</span>
@@ -214,144 +207,16 @@ export default function ReportsPage() {
                   ))}
                 </div>
               </div>
-              <button onClick={handleGenerateReport} className="btn-gold w-full flex items-center justify-center gap-2">
+              <button className="btn-gold w-full flex items-center justify-center gap-2">
                 <BarChart2 size={14} /> Generate Report
               </button>
-              <button onClick={() => toast.success('Exporting raw data to CSV...')} className="btn-outline w-full flex items-center justify-center gap-2">
+              <button className="btn-outline w-full flex items-center justify-center gap-2">
                 <Download size={14} /> Export Data
               </button>
             </div>
           </div>
         </div>
       </div>
-
-      {/* Top Performers Modal */}
-      {showTopPerformersModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-            {/* Modal Header */}
-            <div className="px-8 py-6 border-b flex justify-between items-center bg-gray-50/50">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-gold-50 flex items-center justify-center text-gold-600 shadow-sm border border-gold-100">
-                  <Award size={24} />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">Institutional Top Performers</h2>
-                  <p className="text-sm text-gray-500">Recognizing academic excellence across all grades.</p>
-                </div>
-              </div>
-              <button onClick={() => setShowTopPerformersModal(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
-                <X size={20} className="text-gray-500" />
-              </button>
-            </div>
-
-            {/* Modal Filters */}
-            <div className="px-8 py-4 bg-white border-b flex flex-wrap gap-4 items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-100">
-                  <Filter size={14} className="text-gray-400" />
-                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Filter by Grade</span>
-                </div>
-                <div className="flex gap-2">
-                  {['All Grades', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'].map(g => (
-                    <button 
-                      key={g}
-                      onClick={() => setPerformerGradeFilter(g)}
-                      className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                        performerGradeFilter === g 
-                        ? 'bg-gold-600 text-white shadow-md' 
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      {g}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="text-xs font-medium text-gray-400">
-                Found <span className="text-gold-600 font-bold">{filteredPerformers.length}</span> high-achieving students
-              </div>
-            </div>
-
-            {/* Modal Content - Scrollable Table */}
-            <div className="flex-1 overflow-auto px-8 py-6">
-              <table className="table w-full border-separate border-spacing-0">
-                <thead>
-                  <tr className="bg-gray-50/50">
-                    <th className="rounded-tl-xl border-b py-4 pl-4">Rank</th>
-                    <th className="border-b py-4">Student Name</th>
-                    <th className="border-b py-4">Grade & Section</th>
-                    <th className="border-b py-4 text-center">Academic Score</th>
-                    <th className="rounded-tr-xl border-b py-4 pr-4 text-right">Performance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredPerformers.map((p, i) => (
-                    <tr key={p.id} className="group hover:bg-gold-50/30 transition-colors">
-                      <td className="py-4 pl-4 border-b group-last:border-0">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${
-                          i === 0 ? 'bg-gold-500 text-white shadow-lg' : 
-                          i === 1 ? 'bg-gray-400 text-white shadow-md' :
-                          i === 2 ? 'bg-orange-400 text-white shadow-sm' : 'bg-gray-100 text-gray-500'
-                        }`}>
-                          {i + 1}
-                        </div>
-                      </td>
-                      <td className="py-4 border-b group-last:border-0">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gold-600 font-bold border-2 border-white shadow-sm">
-                            {p.name.split(' ').map((n: string) => n[0]).join('')}
-                          </div>
-                          <span className="font-bold text-gray-900">{p.name}</span>
-                        </div>
-                      </td>
-                      <td className="py-4 border-b group-last:border-0 text-gray-600 font-medium">
-                        {p.grade} <span className="mx-1 text-gray-300">|</span> {p.section}
-                      </td>
-                      <td className="py-4 border-b group-last:border-0 text-center">
-                        <span className="text-lg font-black text-gray-900">{p.score}%</span>
-                      </td>
-                      <td className="py-4 pr-4 border-b group-last:border-0 text-right">
-                        <div className="flex items-center justify-end gap-2 text-green-600 font-bold text-xs">
-                          <TrendingUp size={14} /> Exceptional
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {filteredPerformers.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <div className="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center mb-4 border border-dashed border-gray-200">
-                    <User className="text-gray-300" size={32} />
-                  </div>
-                  <h3 className="font-bold text-lg text-gray-900">No Top Performers Found</h3>
-                  <p className="text-gray-500 max-w-xs mx-auto">We couldn't find any students in {performerGradeFilter} with high-achieving scores for this period.</p>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="px-8 py-6 border-t bg-gray-50/50 flex justify-end gap-3">
-              <button 
-                onClick={() => setShowTopPerformersModal(false)}
-                className="btn-outline px-8"
-              >
-                Close View
-              </button>
-              <button 
-                onClick={() => {
-                  toast.success(`Exporting top performers report for ${performerGradeFilter}...`)
-                  setShowTopPerformersModal(false)
-                }}
-                className="btn-gold px-8 flex items-center gap-2"
-              >
-                <Download size={16} /> Export List
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </AppLayout>
   )
 }

@@ -2,12 +2,10 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { Providers } from '@/components/Providers'
 
-// import { AuthProvider } from '@/context/AuthContext'
-
 export const metadata: Metadata = {
-  title: 'FlexiSoftware – School Administration System',
-  description: 'Comprehensive school management platform powered by GWPL',
-  icons: { icon: '/favicon.png' },
+  title: 'EduManage – School Administration System',
+  description: 'Comprehensive school management platform powered by EduManage',
+  icons: { icon: '/favicon.ico' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -17,9 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </head>
       <body>
-        <Providers>
-            {children}
-        </Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   )

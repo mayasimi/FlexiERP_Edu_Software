@@ -1,1 +1,0 @@
-self.__REACT_LOADABLE_MANIFEST="{\"components/portal/PortalViews.tsx -> @/components/payment/PayStackModal\":{\"id\":\"components/portal/PortalViews.tsx -> @/components/payment/PayStackModal\",\"files\":[\"static/chunks/_app-pages-browser_components_payment_PayStackModal_tsx.js\"]}}"
