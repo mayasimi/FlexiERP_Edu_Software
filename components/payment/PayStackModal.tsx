@@ -4,6 +4,7 @@ import { ReactNode, useMemo, useState } from 'react'
 import { usePaystackPayment } from 'react-paystack'
 import { AlertCircle, CheckCircle, Loader2, X } from 'lucide-react'
 import { BORDER, GOLD, GREEN, RED, TEXT, TEXT2 } from '@/constants'
+import { isLikelyPaystackReference, isValidPaystackPublicKey, toPaystackKobo } from '@/lib/security'
 
 export interface FeeItem {
   id: number
@@ -19,7 +20,7 @@ interface PayStackModalProps {
   studentName: string
   studentEmail: string
   studentId: string
-  onSuccess: (reference: string) => void
+  onSuccess: (payment: { reference: string; amount: number; studentId: string; selectedFees: FeeItem[] }) => void | Promise<void>
   onError: (error: string) => void
 }
 
@@ -39,13 +40,15 @@ export default function PayStackModal({
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('idle')
   const [errorMessage, setErrorMessage] = useState('')
   const publicKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || ''
-  const hasPaystackKey = Boolean(publicKey)
+  const hasPaystackKey = isValidPaystackPublicKey(publicKey)
+  const selectedTotal = selectedFees.reduce((sum, fee) => sum + fee.amount, 0)
+  const isAmountValid = selectedFees.length > 0 && selectedTotal === totalAmount && totalAmount > 0
 
   const reference = useMemo(() => `fees-${studentId}-${Date.now()}`, [studentId])
   const initializePayment = usePaystackPayment({
     reference,
     email: studentEmail,
-    amount: totalAmount * 100,
+    amount: isAmountValid ? toPaystackKobo(totalAmount) : 0,
     publicKey,
     currency: 'NGN',
     metadata: {
@@ -66,7 +69,15 @@ export default function PayStackModal({
 
   const handlePayment = () => {
     if (!hasPaystackKey) {
-      const message = 'PayStack public key is not configured'
+      const message = 'PayStack public key is missing or invalid'
+      setPaymentStatus('error')
+      setErrorMessage(message)
+      onError(message)
+      return
+    }
+
+    if (!isAmountValid) {
+      const message = 'Payment amount could not be validated'
       setPaymentStatus('error')
       setErrorMessage(message)
       onError(message)
@@ -76,14 +87,29 @@ export default function PayStackModal({
     setPaymentStatus('processing')
     setErrorMessage('')
     initializePayment({
-      onSuccess: (response) => {
+      onSuccess: async (response) => {
         const paymentReference = response?.reference || reference
-        setPaymentStatus('success')
-        onSuccess(paymentReference)
-        setTimeout(() => {
-          setPaymentStatus('idle')
-          onClose()
-        }, 2000)
+        if (!isLikelyPaystackReference(paymentReference)) {
+          const message = 'Payment reference could not be validated'
+          setPaymentStatus('error')
+          setErrorMessage(message)
+          onError(message)
+          return
+        }
+
+        try {
+          await onSuccess({ reference: paymentReference, amount: totalAmount, studentId, selectedFees })
+          setPaymentStatus('success')
+          setTimeout(() => {
+            setPaymentStatus('idle')
+            onClose()
+          }, 2000)
+        } catch {
+          const message = 'Payment received by PayStack but the fee record could not be updated'
+          setPaymentStatus('error')
+          setErrorMessage(message)
+          onError(message)
+        }
       },
       onClose: () => {
         const message = 'Payment was cancelled'
@@ -219,7 +245,7 @@ export default function PayStackModal({
           </button>
           <button
             onClick={handlePayment}
-            disabled={paymentStatus === 'processing' || selectedFees.length === 0}
+            disabled={paymentStatus === 'processing' || !isAmountValid}
             style={{
               flex: 2,
               padding: '12px',
@@ -229,7 +255,7 @@ export default function PayStackModal({
               fontSize: 14,
               fontWeight: 600,
               color: '#0D0D0D',
-              cursor: paymentStatus === 'processing' || selectedFees.length === 0 ? 'not-allowed' : 'pointer',
+              cursor: paymentStatus === 'processing' || !isAmountValid ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',

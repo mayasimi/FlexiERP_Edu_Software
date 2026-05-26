@@ -5,13 +5,14 @@ import { usePaystackPayment } from 'react-paystack'
 import { AlertCircle, CheckCircle, Loader2, X } from 'lucide-react'
 import { BORDER, GOLD, GREEN, RED, TEXT, TEXT2 } from '@/constants'
 import type { PayrollPayment } from '@/types/payroll'
+import { isLikelyPaystackReference, isValidPaystackPublicKey, maskAccountNumber, toPaystackKobo } from '@/lib/security'
 
 interface PayrollPayStackModalProps {
   isOpen: boolean
   onClose: () => void
   payment: PayrollPayment | null
   adminEmail: string
-  onSuccess: (staffId: string, reference: string) => void
+  onSuccess: (payment: { staffId: string; reference: string; amount: number }) => void | Promise<void>
   onError: (error: string) => void
 }
 
@@ -28,7 +29,8 @@ export default function PayrollPayStackModal({
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('idle')
   const [errorMessage, setErrorMessage] = useState('')
   const publicKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || ''
-  const hasPaystackKey = Boolean(publicKey)
+  const hasPaystackKey = isValidPaystackPublicKey(publicKey)
+  const isAmountValid = Boolean(payment && payment.amount > 0 && Number.isFinite(payment.amount))
 
   const reference = useMemo(
     () => `payroll-${payment?.staffId || 'staff'}-${Date.now()}`,
@@ -38,7 +40,7 @@ export default function PayrollPayStackModal({
   const initializePayment = usePaystackPayment({
     reference,
     email: adminEmail,
-    amount: (payment?.amount || 0) * 100,
+    amount: payment && isAmountValid ? toPaystackKobo(payment.amount) : 0,
     publicKey,
     currency: 'NGN',
     metadata: {
@@ -47,8 +49,6 @@ export default function PayrollPayStackModal({
         { display_name: 'Staff Name', variable_name: 'staff_name', value: payment?.staffName || '' },
         { display_name: 'Staff ID', variable_name: 'staff_id', value: payment?.staffId || '' },
         { display_name: 'Role', variable_name: 'role', value: payment?.role || '' },
-        { display_name: 'Bank', variable_name: 'bank_name', value: payment?.bankName || '' },
-        { display_name: 'Account', variable_name: 'account_number', value: payment?.accountNumber || '' },
       ],
     },
   })
@@ -64,7 +64,15 @@ export default function PayrollPayStackModal({
     if (!payment) return
 
     if (!hasPaystackKey) {
-      const message = 'PayStack public key is not configured'
+      const message = 'PayStack public key is missing or invalid'
+      setPaymentStatus('error')
+      setErrorMessage(message)
+      onError(message)
+      return
+    }
+
+    if (!isAmountValid) {
+      const message = 'Payroll amount could not be validated'
       setPaymentStatus('error')
       setErrorMessage(message)
       onError(message)
@@ -74,14 +82,29 @@ export default function PayrollPayStackModal({
     setPaymentStatus('processing')
     setErrorMessage('')
     initializePayment({
-      onSuccess: (response) => {
+      onSuccess: async (response) => {
         const paymentReference = response?.reference || reference
-        setPaymentStatus('success')
-        onSuccess(payment.staffId, paymentReference)
-        setTimeout(() => {
-          setPaymentStatus('idle')
-          onClose()
-        }, 2000)
+        if (!isLikelyPaystackReference(paymentReference)) {
+          const message = 'Payment reference could not be validated'
+          setPaymentStatus('error')
+          setErrorMessage(message)
+          onError(message)
+          return
+        }
+
+        try {
+          await onSuccess({ staffId: payment.staffId, reference: paymentReference, amount: payment.amount })
+          setPaymentStatus('success')
+          setTimeout(() => {
+            setPaymentStatus('idle')
+            onClose()
+          }, 2000)
+        } catch {
+          const message = 'Payroll payment received by PayStack but the payroll record could not be updated'
+          setPaymentStatus('error')
+          setErrorMessage(message)
+          onError(message)
+        }
       },
       onClose: () => {
         const message = 'Payroll payment was cancelled'
@@ -165,7 +188,7 @@ export default function PayrollPayStackModal({
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 6 }}>
               <span style={{ color: TEXT2 }}>Account</span>
-              <strong>{payment.accountNumber}</strong>
+              <strong>{maskAccountNumber(payment.accountNumber)}</strong>
             </div>
           </div>
         </div>
@@ -207,7 +230,7 @@ export default function PayrollPayStackModal({
           </button>
           <button
             onClick={handlePayment}
-            disabled={paymentStatus === 'processing' || payment.amount <= 0}
+            disabled={paymentStatus === 'processing' || !isAmountValid}
             style={{
               flex: 2,
               padding: '12px',
@@ -217,7 +240,7 @@ export default function PayrollPayStackModal({
               fontSize: 14,
               fontWeight: 600,
               color: '#0D0D0D',
-              cursor: paymentStatus === 'processing' || payment.amount <= 0 ? 'not-allowed' : 'pointer',
+              cursor: paymentStatus === 'processing' || !isAmountValid ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',

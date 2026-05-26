@@ -18,7 +18,7 @@ const api: AxiosInstance = axios.create({
 // ─── Request Interceptor: attach Bearer token ────────────────────────────────
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('edu_token')
+    const token = sessionStorage.getItem('edu_token')
     if (token) config.headers.Authorization = `Bearer ${token}`
   }
   return config
@@ -29,7 +29,7 @@ api.interceptors.response.use(
   (res: AxiosResponse) => res,
   (error) => {
     if (error.response?.status === 401 && typeof window !== 'undefined') {
-      localStorage.removeItem('edu_token')
+      sessionStorage.removeItem('edu_token')
       window.location.href = '/login'
     }
     return Promise.reject(error)
@@ -96,6 +96,9 @@ export const feeApi = {
   getOverdueList: () => api.get('/fees/overdue'),
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PAYROLL PAYMENTS → Laravel: App\Http\Controllers\PayrollController
+// ─────────────────────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
 // ACADEMICS / COURSES  →  Laravel: App\Http\Controllers\AcademicsController
 // ─────────────────────────────────────────────────────────────────────────────

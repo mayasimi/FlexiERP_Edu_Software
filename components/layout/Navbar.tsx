@@ -11,9 +11,9 @@ const GOLD = '#C9A020'
 const BORDER = '#E8E4DC'
 
 const notifications = [
-  { id: 1, title: 'Fee Payment Reminder', message: '2nd Term fees due March 15', time: '2 hours ago', isRead: false, type: 'fee' },
-  { id: 2, title: 'Result Published', message: '1st term results available', time: '1 day ago', isRead: false, type: 'result' },
-  { id: 3, title: 'Attendance Alert', message: 'Attendance below 75%', time: '3 days ago', isRead: true, type: 'attendance' },
+  { id: 'fee-balance-reminder', title: 'Fee Payment Reminder', message: '2nd Term fees due March 15', time: '2 hours ago', isRead: false, type: 'fee' },
+  { id: 'result-published', title: 'Result Published', message: '1st term results available', time: '1 day ago', isRead: false, type: 'result' },
+  { id: 'attendance-alert', title: 'Attendance Alert', message: 'Attendance below 75%', time: '3 days ago', isRead: true, type: 'attendance' },
 ]
 
 const typeColor: Record<string, string> = {
@@ -27,6 +27,7 @@ interface NavbarProps {
   userRole?: string
   userEmail?: string
   settingsHref?: string
+  getNotificationHref?: (notificationId: string) => string
 }
 
 function formatDateTime(date: Date) {
@@ -40,7 +41,7 @@ function formatDateTime(date: Date) {
   }).format(date)
 }
 
-export default function Navbar({ userName, userRole, userEmail, settingsHref = '/settings' }: NavbarProps) {
+export default function Navbar({ userName, userRole, userEmail, settingsHref = '/settings', getNotificationHref }: NavbarProps) {
   const { user, role, logout } = useAuthStore()
   const [now, setNow] = useState(() => new Date())
   const [showNotifications, setShowNotifications] = useState(false)
@@ -208,7 +209,7 @@ export default function Navbar({ userName, userRole, userEmail, settingsHref = '
               {notifications.map((notification) => (
                 <Link
                   key={notification.id}
-                  href="/notifications"
+                  href={getNotificationHref ? getNotificationHref(notification.id) : `/notifications?notification=${notification.id}`}
                   onClick={() => setShowNotifications(false)}
                   onMouseEnter={(event) => { event.currentTarget.style.background = '#F7F6F3' }}
                   onMouseLeave={(event) => { event.currentTarget.style.background = notification.isRead ? 'white' : 'rgba(201,160,32,0.05)' }}

@@ -33,7 +33,7 @@ const getStoredRole = () => {
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   role: getStoredRole(),
-  token: typeof window !== 'undefined' ? localStorage.getItem('edu_token') : null,
+  token: typeof window !== 'undefined' ? sessionStorage.getItem('edu_token') : null,
   isAuthenticated: false,
   isLoading: false,
   setRole: (role) => {
@@ -48,7 +48,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const res = await authApi.login(email, password)
       const { token, user } = res.data
-      localStorage.setItem('edu_token', token)
+      if (token) sessionStorage.setItem('edu_token', token)
       const role = user?.role ?? getStoredRole()
       if (typeof window !== 'undefined' && role) {
         localStorage.setItem('edu_user_role', role)
@@ -62,7 +62,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: async () => {
     try { await authApi.logout() } catch {}
-    localStorage.removeItem('edu_token')
+    sessionStorage.removeItem('edu_token')
     set({ user: null, token: null, isAuthenticated: false })
     window.location.href = '/login'
   },
@@ -76,7 +76,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         localStorage.setItem('edu_user_role', role)
       }
     } catch {
-      localStorage.removeItem('edu_token')
+      sessionStorage.removeItem('edu_token')
       localStorage.removeItem('edu_user_role')
       set({ user: null, token: null, role: null, isAuthenticated: false })
     }

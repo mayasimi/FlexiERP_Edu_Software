@@ -40,7 +40,7 @@ export type ActivityItem = {
 
 function getToken(): string {
   if (typeof window === 'undefined') return '';
-  return localStorage.getItem('flexi_token') ?? '';
+  return sessionStorage.getItem('edu_token') ?? sessionStorage.getItem('flexi_token') ?? '';
 }
 
 /*

@@ -226,7 +226,7 @@ export default function PayrollManagement() {
     openPayrollPayment(selectedStaff)
   }
 
-  const handlePaymentSuccess = (_staffId: string, reference: string) => {
+  const handlePaymentSuccess = ({ reference }: { staffId: string; reference: string; amount: number }) => {
     setStaff((currentStaff) =>
       currentStaff.map((member) =>
         paymentStaffIds.includes(member.id) ? { ...member, paid: true } : member,

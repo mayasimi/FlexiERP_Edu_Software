@@ -119,6 +119,7 @@ export const mockData = {
   },
   parentNotifications: [
     {
+      id: 'pta-meeting',
       title: 'Second term PTA meeting',
       child: 'All children',
       category: 'Meeting',
@@ -127,6 +128,7 @@ export const mockData = {
       message: 'Parents are invited for the second term PTA meeting in the school hall this Friday by 2:00 PM.',
     },
     {
+      id: 'fee-balance-reminder',
       title: 'Fee balance reminder',
       child: 'Chidinma Okafor',
       category: 'Fees',
@@ -135,6 +137,16 @@ export const mockData = {
       message: 'A balance remains on the current term invoice. Kindly complete payment before examination clearance.',
     },
     {
+      id: 'result-published',
+      title: 'Result published',
+      child: 'Chidinma Okafor',
+      category: 'Academics',
+      time: 'Yesterday, 10:00 AM',
+      priority: 'Normal',
+      message: 'First term result is now available. Open the report card page to view and print the result.',
+    },
+    {
+      id: 'science-project-approval',
       title: 'Science project approval',
       child: 'Chidinma Okafor',
       category: 'Academics',
@@ -143,6 +155,16 @@ export const mockData = {
       message: 'The Physics project topic has been approved by Mr. Lawal and can now move to prototype stage.',
     },
     {
+      id: 'attendance-alert',
+      title: 'Attendance alert',
+      child: 'Chidinma Okafor',
+      category: 'Attendance',
+      time: '3 days ago',
+      priority: 'High',
+      message: 'Attendance has dropped below the expected threshold. Please follow up with the class teacher.',
+    },
+    {
+      id: 'attendance-commendation',
       title: 'Attendance commendation',
       child: 'Blessing Okafor',
       category: 'Attendance',

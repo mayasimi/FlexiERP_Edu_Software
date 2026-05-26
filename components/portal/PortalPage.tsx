@@ -1,5 +1,6 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Navbar from '@/components/layout/Navbar'
 import AppFooter from '@/components/layout/AppFooter'
 import PortalSidebar from './PortalSidebar'
@@ -20,12 +21,22 @@ const PAGE_TITLES: Record<PageType, string> = {
 }
 
 export default function PortalPage() {
+  const searchParams = useSearchParams()
   const [role, setRole] = useState<RoleType>('student')
   const [page, setPage] = useState<PageType>('dashboard')
   const [activeChild, setActiveChild] = useState(0)
+  const selectedNotificationId = searchParams.get('notification')
   const portalUser = role === 'parent'
     ? { name: 'Parent User', email: 'parent@school.edu', role: 'Parent' }
     : { name: 'Student User', email: 'student@school.edu', role: 'Student' }
+
+  useEffect(() => {
+    const pageParam = searchParams.get('page')
+    if (pageParam === 'notifications') {
+      setRole('parent')
+      setPage('notifications')
+    }
+  }, [searchParams])
 
   const content = (() => {
     switch (page) {
@@ -42,7 +53,7 @@ export default function PortalPage() {
       case 'switch':
         return <ParentSwitch activeChild={activeChild} setActiveChild={setActiveChild} />
       case 'notifications':
-        return <ParentNotifications />
+        return <ParentNotifications selectedNotificationId={selectedNotificationId} />
       case 'projects':
         return <StudentProjects />
       case 'scheme':
@@ -63,6 +74,7 @@ export default function PortalPage() {
             userEmail={portalUser.email}
             userRole={portalUser.role}
             settingsHref="/portal"
+            getNotificationHref={(notificationId) => `/portal?page=notifications&notification=${notificationId}`}
           />
 
           <main style={{ flex: 1, padding: '28px 26px 32px' }}>

@@ -1,13 +1,60 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
+import Link from 'next/link'
 import { AlertCircle, Award, Bell, BookMarked, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock, Download, Printer, Target, TrendingUp, UserRound } from 'lucide-react'
 import type { FeeItem } from '@/components/payment/PayStackModal'
+import { escapeHtml } from '@/lib/security'
 import { mockData, getGrade, GOLD, BORDER, BLUE, GREEN, RED } from './portalData'
 import { Avatar, Card, CardLabel, GoldBadge, StatCard } from './portalUi'
 import { RoleType } from './portalTypes'
 
 const PayStackModal = dynamic(() => import('@/components/payment/PayStackModal'), { ssr: false })
+
+function printElementById(elementId: string, title: string) {
+  if (typeof window === 'undefined') return
+
+  const element = document.getElementById(elementId)
+  if (!element) return
+
+  const printWindow = window.open('', '_blank', 'width=900,height=1100,noopener,noreferrer')
+  if (!printWindow) {
+    window.print()
+    return
+  }
+
+  printWindow.document.write(`
+    <!doctype html>
+    <html>
+      <head>
+        <title>${escapeHtml(title)}</title>
+        <style>
+          * { box-sizing: border-box; }
+          body {
+            margin: 0;
+            padding: 24px;
+            background: #ffffff;
+            color: #0D0D0D;
+            font-family: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+          }
+          table { page-break-inside: auto; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
+          button { display: none !important; }
+          @media print {
+            body { padding: 0; }
+          }
+        </style>
+      </head>
+      <body>${element.outerHTML}</body>
+    </html>
+  `)
+  printWindow.document.close()
+  printWindow.focus()
+  window.setTimeout(() => {
+    printWindow.print()
+    printWindow.close()
+  }, 250)
+}
 
 export function Dashboard({ role }: { role: RoleType }) {
   const d = mockData.student
@@ -215,19 +262,18 @@ export function Fees() {
     setSelectedFeeIds((current) => (current.includes(id) ? current.filter((feeId) => feeId !== id) : [...current, id]))
   }
 
-  const handlePaymentSuccess = (reference: string) => {
-    const amountPaid = selectedTotal
+  const handlePaymentSuccess = ({ reference, amount }: { reference: string; amount: number; studentId: string; selectedFees: FeeItem[] }) => {
     setPaymentHistory((current) => [
       {
         date: new Date().toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' }),
         desc: `${mockData.term} Fees Payment`,
-        amount: amountPaid,
+        amount,
         method: 'PayStack',
         ref: reference,
       },
       ...current,
     ])
-    setCurrentTermPaid((current) => Math.min(current + amountPaid, totalDue))
+    setCurrentTermPaid((current) => Math.min(current + amount, totalDue))
     setSelectedFeeIds([])
     setPaymentNotice(`Payment successful. Reference: ${reference}`)
   }
@@ -476,10 +522,18 @@ function StudentFocusedResultCard() {
           <p style={{ margin: '8px 0 0', fontSize: 13, color: '#5C5750', lineHeight: 1.55 }}>A clear view of your scores, strengths, and the next subjects to focus on.</p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#FFFFFF', border: `1px solid ${BORDER}`, color: '#0D0D0D', fontSize: 12, padding: '8px 14px', borderRadius: 7, cursor: 'pointer', fontWeight: 700 }}>
+          <button
+            type='button'
+            onClick={() => printElementById('student-result-card', `${d.name} Result`)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#FFFFFF', border: `1px solid ${BORDER}`, color: '#0D0D0D', fontSize: 12, padding: '8px 14px', borderRadius: 7, cursor: 'pointer', fontWeight: 700 }}
+          >
             <Download size={14} /> Save PDF
           </button>
-          <button style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#C9A020', border: 'none', color: '#0D0D0D', fontSize: 12, padding: '8px 14px', borderRadius: 7, cursor: 'pointer', fontWeight: 700 }}>
+          <button
+            type='button'
+            onClick={() => printElementById('student-result-card', `${d.name} Result`)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#C9A020', border: 'none', color: '#0D0D0D', fontSize: 12, padding: '8px 14px', borderRadius: 7, cursor: 'pointer', fontWeight: 700 }}
+          >
             <Printer size={14} /> Print
           </button>
         </div>
@@ -509,6 +563,7 @@ function StudentFocusedResultCard() {
         }
       `}</style>
 
+      <div id='student-result-card'>
       <Card style={{ marginBottom: 16, padding: 0, overflow: 'hidden' }}>
         <div style={{ background: '#0D0D0D', padding: 22, color: '#FFFFFF', display: 'grid', gridTemplateColumns: '1fr auto', gap: 18, alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
@@ -602,6 +657,7 @@ function StudentFocusedResultCard() {
           </div>
         </div>
       </Card>
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
         <Card>
@@ -700,10 +756,18 @@ export function ReportCard() {
           <p style={{ margin: 0, fontSize: 13, color: '#5C5750' }}>Search by class and term to display an official academic report.</p>
         </div>
         {displayedResult && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#FFFFFF', border: `1px solid ${BORDER}`, color: '#0D0D0D', fontSize: 12, padding: '8px 14px', borderRadius: 7, cursor: 'pointer', fontWeight: 700 }}>
+          <button
+            type='button'
+            onClick={() => printElementById('report-card', `${d.name} Report Card`)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#FFFFFF', border: `1px solid ${BORDER}`, color: '#0D0D0D', fontSize: 12, padding: '8px 14px', borderRadius: 7, cursor: 'pointer', fontWeight: 700 }}
+          >
             <Download size={14} /> Export PDF
           </button>
-          <button style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#0D0D0D', border: 'none', color: '#FFFFFF', fontSize: 12, padding: '8px 14px', borderRadius: 7, cursor: 'pointer', fontWeight: 700 }}>
+          <button
+            type='button'
+            onClick={() => printElementById('report-card', `${d.name} Report Card`)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#0D0D0D', border: 'none', color: '#FFFFFF', fontSize: 12, padding: '8px 14px', borderRadius: 7, cursor: 'pointer', fontWeight: 700 }}
+          >
             <Printer size={14} /> Print Report Card
           </button>
         </div>}
@@ -924,7 +988,11 @@ export function ReportCard() {
         </div>
 
         <div style={{ padding: '20px 32px', borderTop: `1px solid ${BORDER}`, background: '#F7F5F0' }}>
-          <button style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 auto', border: 'none', borderRadius: 8, background: '#0D0D0D', color: '#FFFFFF', padding: '12px 24px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+          <button
+            type='button'
+            onClick={() => printElementById('report-card', `${d.name} Report Card`)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 auto', border: 'none', borderRadius: 8, background: '#0D0D0D', color: '#FFFFFF', padding: '12px 24px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+          >
             <Printer size={15} /> Print Report Card
           </button>
         </div>
@@ -934,8 +1002,9 @@ export function ReportCard() {
   )
 }
 
-export function ParentNotifications() {
+export function ParentNotifications({ selectedNotificationId }: { selectedNotificationId?: string | null } = {}) {
   const notifications = mockData.parentNotifications
+  const selectedNotification = notifications.find((item) => item.id === selectedNotificationId) || null
   const highPriority = notifications.filter((item) => item.priority === 'High').length
   const categoryColor: Record<string, string> = {
     Meeting: GOLD,
@@ -943,6 +1012,13 @@ export function ParentNotifications() {
     Academics: BLUE,
     Attendance: GREEN,
   }
+
+  useEffect(() => {
+    if (!selectedNotificationId) return
+
+    const element = document.getElementById(`notification-${selectedNotificationId}`)
+    element?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [selectedNotificationId])
 
   return (
     <div>
@@ -957,7 +1033,7 @@ export function ParentNotifications() {
         <StatCard label='Children' value={`${mockData.children.length}`} sub='Linked profiles' color={BLUE} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 0.75fr', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: selectedNotification ? 'minmax(320px,0.85fr) minmax(420px,1.15fr)' : '1.25fr 0.75fr', gap: 16, alignItems: 'start' }}>
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '18px 20px', background: '#0D0D0D', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
             <div>
@@ -972,8 +1048,27 @@ export function ParentNotifications() {
           <div style={{ padding: '6px 20px 18px' }}>
             {notifications.map((item, index) => {
               const color = categoryColor[item.category] || GOLD
+              const isSelected = item.id === selectedNotificationId
               return (
-                <div key={item.title} style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 14, padding: '16px 0', borderBottom: index < notifications.length - 1 ? `1px solid ${BORDER}` : 'none', alignItems: 'start' }}>
+                <Link
+                  key={item.id}
+                  href={`/notifications?notification=${item.id}`}
+                  id={`notification-${item.id}`}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'auto 1fr auto',
+                    gap: 14,
+                    margin: '0 -10px',
+                    padding: '16px 10px',
+                    borderBottom: index < notifications.length - 1 ? `1px solid ${BORDER}` : 'none',
+                    alignItems: 'start',
+                    background: isSelected ? `${color}14` : 'transparent',
+                    borderRadius: isSelected ? 10 : 0,
+                    boxShadow: isSelected ? `0 0 0 1px ${color}33 inset` : 'none',
+                    cursor: 'pointer',
+                    textDecoration: 'none',
+                  }}
+                >
                   <div style={{ width: 40, height: 40, borderRadius: 10, background: `${color}16`, border: `1px solid ${color}33`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {item.priority === 'High' ? <AlertCircle size={18} color={color} /> : <CheckCircle2 size={18} color={color} />}
                   </div>
@@ -993,12 +1088,79 @@ export function ParentNotifications() {
                     </div>
                   </div>
                   <GoldBadge color={item.priority === 'High' ? RED : '#9B9590'}>{item.priority}</GoldBadge>
-                </div>
+                </Link>
               )
             })}
           </div>
         </Card>
 
+        {selectedNotification ? (
+          <div
+            id={`notification-page-${selectedNotification.id}`}
+            style={{
+              background: '#FFFFFF',
+              border: `1px solid ${BORDER}`,
+              borderRadius: 8,
+              minHeight: 760,
+              maxWidth: 794,
+              width: '100%',
+              margin: '0 auto',
+              boxShadow: '0 12px 34px rgba(13,13,13,0.10)',
+              overflow: 'hidden',
+            }}
+          >
+            <div style={{ padding: '28px 34px', borderBottom: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start' }}>
+              <div>
+                <p style={{ margin: 0, color: GOLD, fontSize: 11, letterSpacing: 1.6, textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 900 }}>Official Notification</p>
+                <h3 style={{ margin: '8px 0 0', color: '#0D0D0D', fontSize: 28, lineHeight: 1.15, fontFamily: "'Georgia',serif", fontWeight: 400 }}>
+                  {selectedNotification.title}
+                </h3>
+              </div>
+              <button
+                type='button'
+                onClick={() => printElementById(`notification-page-${selectedNotification.id}`, `${selectedNotification.title} Notification`)}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: '#0D0D0D', border: 'none', color: '#FFFFFF', fontSize: 12, padding: '9px 13px', borderRadius: 7, cursor: 'pointer', fontWeight: 800, whiteSpace: 'nowrap' }}
+              >
+                <Printer size={14} /> Print
+              </button>
+            </div>
+
+            <div style={{ padding: '28px 34px', display: 'grid', gap: 24 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 12, padding: 16, background: '#FAFAF8', border: `1px solid ${BORDER}`, borderRadius: 10 }}>
+                {[
+                  ['Category', selectedNotification.category],
+                  ['Priority', selectedNotification.priority],
+                  ['Child', selectedNotification.child],
+                  ['Time', selectedNotification.time],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <p style={{ margin: 0, color: '#9B9590', fontSize: 10, fontWeight: 900, letterSpacing: 1, textTransform: 'uppercase' }}>{label}</p>
+                    <p style={{ margin: '5px 0 0', color: '#0D0D0D', fontSize: 13, fontWeight: 800 }}>{value}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ minHeight: 320 }}>
+                <p style={{ margin: 0, color: '#5C5750', fontSize: 15, lineHeight: 1.85 }}>
+                  {selectedNotification.message}
+                </p>
+                <p style={{ margin: '24px 0 0', color: '#5C5750', fontSize: 14, lineHeight: 1.8 }}>
+                  Kindly treat this notice as an official communication from {mockData.schoolName}. Where action is required, please follow up with the school office or the assigned class teacher.
+                </p>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 18 }}>
+                <div style={{ borderTop: `2px solid ${BORDER}`, paddingTop: 10, color: '#9B9590', fontSize: 11, letterSpacing: 1.1, textTransform: 'uppercase', textAlign: 'center' }}>Parent / Guardian</div>
+                <div style={{ borderTop: `2px solid ${BORDER}`, paddingTop: 10, color: '#9B9590', fontSize: 11, letterSpacing: 1.1, textTransform: 'uppercase', textAlign: 'center' }}>School Administration</div>
+              </div>
+            </div>
+
+            <div style={{ padding: '16px 34px', borderTop: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'space-between', gap: 12, color: '#9B9590', fontSize: 11, letterSpacing: 1.1, textTransform: 'uppercase' }}>
+              <span>{mockData.schoolName}</span>
+              <span style={{ color: GOLD }}>Generated by EduManage</span>
+            </div>
+          </div>
+        ) : (
         <Card>
           <CardLabel>Family Snapshot</CardLabel>
           <div style={{ display: 'grid', gap: 12 }}>
@@ -1016,6 +1178,7 @@ export function ParentNotifications() {
             <p style={{ margin: 0, color: '#8B6E10', fontSize: 13, lineHeight: 1.55, fontWeight: 600 }}>You have {highPriority} priority updates waiting for parent action this week.</p>
           </div>
         </Card>
+        )}
       </div>
     </div>
   )
