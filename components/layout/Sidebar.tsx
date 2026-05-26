@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, UserPlus, CreditCard, BookOpen, Package,
   CalendarDays, ClipboardCheck, Settings, Users, Mail,
-  User, BarChart3, ExternalLink, Zap, FileText, Bell, ClipboardList
+  User, BarChart3, ExternalLink, Zap, FileText, Bell, ClipboardList, WalletCards
 } from 'lucide-react'
 import { useAuthStore } from '@/lib/auth-store'
 import { cn } from '@/lib/utils'
@@ -14,6 +14,7 @@ const adminNavItems = [
   { label: 'Dashboard',       href: '/dashboard',       icon: LayoutDashboard },
   { label: 'Admission',       href: '/admission',       icon: UserPlus },
   { label: 'Fee Management',  href: '/fee-management',  icon: CreditCard },
+  { label: 'Payroll',         href: '/admin/payroll',   icon: WalletCards },
   { label: 'Academics',       href: '/academics',       icon: BookOpen },
   { label: 'Inventory',       href: '/inventory',       icon: Package },
   { label: 'Timetable',       href: '/timetable',       icon: CalendarDays },
