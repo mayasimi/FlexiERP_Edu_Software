@@ -7,11 +7,10 @@ const LOGIN_PATH = '/login';
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(TOKEN_KEY)?.value;
-  const allowUnauthenticated = process.env.NODE_ENV === 'development'
 
   const isProtected = PROTECTED.some(prefix => pathname.startsWith(prefix));
 
-  if (!allowUnauthenticated && isProtected && !token) {
+  if (isProtected && !token) {
     const url = request.nextUrl.clone();
     url.pathname = LOGIN_PATH;
     return NextResponse.redirect(url);
