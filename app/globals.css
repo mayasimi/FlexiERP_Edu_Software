@@ -1,10 +1,10 @@
-@import url('https://fonts.cdnfonts.com/css/palatino-linotype');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ── Brand Fonts ── */
+@import url('https://fonts.cdnfonts.com/css/palatino-linotype');
+
 :root {
   --gold: #C9A020;
   --gold-light: #E8BC2C;
@@ -229,6 +229,16 @@ body { min-height: 100vh; }
   .btn-outline:hover { border-color: var(--gold); color: var(--gold); }
 
   /* ── Inputs ── */
+  .label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    color: var(--text-muted);
+  }
+
   .input {
     width: 100%;
     padding: 10px 14px;

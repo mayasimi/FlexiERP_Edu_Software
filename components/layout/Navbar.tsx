@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Bell, BookOpen, ChevronDown, LogOut, Settings } from 'lucide-react'
@@ -11,9 +11,9 @@ const GOLD = '#C9A020'
 const BORDER = '#E8E4DC'
 
 const notifications = [
-  { id: 'fee-balance-reminder', title: 'Fee Payment Reminder', message: '2nd Term fees due March 15', time: '2 hours ago', isRead: false, type: 'fee' },
-  { id: 'result-published', title: 'Result Published', message: '1st term results available', time: '1 day ago', isRead: false, type: 'result' },
-  { id: 'attendance-alert', title: 'Attendance Alert', message: 'Attendance below 75%', time: '3 days ago', isRead: true, type: 'attendance' },
+  { id: 1, title: 'Fee Payment Reminder', message: '2nd Term fees due March 15', time: '2 hours ago', isRead: false, type: 'fee' },
+  { id: 2, title: 'Result Published', message: '1st term results available', time: '1 day ago', isRead: false, type: 'result' },
+  { id: 3, title: 'Attendance Alert', message: 'Attendance below 75%', time: '3 days ago', isRead: true, type: 'attendance' },
 ]
 
 const typeColor: Record<string, string> = {
@@ -27,7 +27,7 @@ interface NavbarProps {
   userRole?: string
   userEmail?: string
   settingsHref?: string
-  getNotificationHref?: (notificationId: string) => string
+  getNotificationHref?: (notificationId: number) => string
 }
 
 function formatDateTime(date: Date) {
@@ -42,17 +42,26 @@ function formatDateTime(date: Date) {
 }
 
 export default function Navbar({ userName, userRole, userEmail, settingsHref = '/settings', getNotificationHref }: NavbarProps) {
+
   const { user, role, logout } = useAuthStore()
-  const [now, setNow] = useState(() => new Date())
+  const [mounted, setMounted] = useState(false)
+  const [now, setNow] = useState<Date | null>(null)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
   const [logoFailed, setLogoFailed] = useState(false)
   const navRef = useRef<HTMLElement>(null)
 
-  const unreadCount = notifications.filter((notification) => !notification.isRead).length
-  const displayName = userName || user?.name || 'Admin User'
-  const displayRole = userRole || (role ? role.charAt(0).toUpperCase() + role.slice(1) : 'Administrator')
-  const displayEmail = userEmail || user?.email || 'admin@school.edu'
+  useEffect(() => {
+    setMounted(true)
+    setNow(new Date())
+  }, [])
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length
+
+  // Only use real user data after client has mounted
+  const displayName  = userName  || (mounted ? user?.name  : null) || 'Admin User'
+  const displayRole  = userRole  || (mounted && user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Administrator')
+  const displayEmail = userEmail || (mounted ? user?.email : null) || 'admin@school.edu'
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000)
@@ -116,7 +125,7 @@ export default function Navbar({ userName, userRole, userEmail, settingsHref = '
         >
           {!logoFailed ? (
             <Image
-              src="/assets/logo.png"
+              src="/FLEXI_LOGO.png"
               alt="School logo"
               width={40}
               height={40}
@@ -128,13 +137,13 @@ export default function Navbar({ userName, userRole, userEmail, settingsHref = '
           )}
         </div>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#0D0D0D', lineHeight: 1.1 }}>EduManage</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#0D0D0D', lineHeight: 1.1 }}>Flexi Software</div>
           <div style={{ fontSize: 12, color: '#6B6660', lineHeight: 1.2 }}>School Administration</div>
         </div>
       </div>
 
-      <div style={{ color: '#4B4640', fontSize: 14, fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', flex: 1 }}>
-        {formatDateTime(now)}
+      <div style={{ color: '#4B4640', fontSize: 14, fontWeight: 600, textAlign: 'center', whiteSpace: 'nowrap', flex: 1, minHeight: '1.5em' }}>
+        {now ? formatDateTime(now) : ''}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, minWidth: 290 }}>
@@ -206,35 +215,58 @@ export default function Navbar({ userName, userRole, userEmail, settingsHref = '
                 <div style={{ fontSize: 15, fontWeight: 700, color: '#0D0D0D' }}>Notifications</div>
                 <div style={{ fontSize: 12, color: '#6B6660', marginTop: 2 }}>{unreadCount} unread updates</div>
               </div>
-              {notifications.map((notification) => (
-                <Link
-                  key={notification.id}
-                  href={getNotificationHref ? getNotificationHref(notification.id) : `/notifications?notification=${notification.id}`}
-                  onClick={() => setShowNotifications(false)}
-                  onMouseEnter={(event) => { event.currentTarget.style.background = '#F7F6F3' }}
-                  onMouseLeave={(event) => { event.currentTarget.style.background = notification.isRead ? 'white' : 'rgba(201,160,32,0.05)' }}
-                  style={{
-                    width: '100%',
-                    padding: '12px 16px',
-                    border: 'none',
-                    borderBottom: `1px solid ${BORDER}`,
-                    background: notification.isRead ? 'white' : 'rgba(201,160,32,0.05)',
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    gap: 10,
-                    fontFamily: 'inherit',
-                    textDecoration: 'none',
-                  }}
-                >
-                  <span style={{ width: 8, height: 8, marginTop: 6, borderRadius: 999, background: typeColor[notification.type] || GOLD, flexShrink: 0 }} />
-                  <span style={{ minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#0D0D0D' }}>{notification.title}</span>
-                    <span style={{ display: 'block', fontSize: 13, color: '#6B6660', marginTop: 2 }}>{notification.message}</span>
-                    <span style={{ display: 'block', fontSize: 12, color: '#A09080', marginTop: 5 }}>{notification.time}</span>
-                  </span>
-                </Link>
-              ))}
+              {notifications.map((notification) => {
+                const href = getNotificationHref?.(notification.id)
+                const commonStyle: CSSProperties = {
+                  width: '100%',
+                  padding: '12px 16px',
+                  borderBottom: `1px solid ${BORDER}`,
+                  background: notification.isRead ? 'white' : 'rgba(201,160,32,0.05)',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  gap: 10,
+                  fontFamily: 'inherit',
+                }
+
+                const content = (
+                  <>
+                    <span style={{ width: 8, height: 8, marginTop: 6, borderRadius: 999, background: typeColor[notification.type] || GOLD, flexShrink: 0 }} />
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#0D0D0D' }}>{notification.title}</span>
+                      <span style={{ display: 'block', fontSize: 13, color: '#6B6660', marginTop: 2 }}>{notification.message}</span>
+                      <span style={{ display: 'block', fontSize: 12, color: '#A09080', marginTop: 5 }}>{notification.time}</span>
+                    </span>
+                  </>
+                )
+
+                if (href) {
+                  return (
+                    <Link
+                      key={notification.id}
+                      href={href}
+                      onClick={() => setShowNotifications(false)}
+                      onMouseEnter={(event) => { (event.currentTarget as HTMLElement).style.background = '#F7F6F3' }}
+                      onMouseLeave={(event) => { (event.currentTarget as HTMLElement).style.background = notification.isRead ? 'white' : 'rgba(201,160,32,0.05)' }}
+                      style={{ ...commonStyle, border: 'none', textDecoration: 'none', color: 'inherit' }}
+                    >
+                      {content}
+                    </Link>
+                  )
+                }
+
+                return (
+                  <button
+                    key={notification.id}
+                    type="button"
+                    onMouseEnter={(event) => { event.currentTarget.style.background = '#F7F6F3' }}
+                    onMouseLeave={(event) => { event.currentTarget.style.background = notification.isRead ? 'white' : 'rgba(201,160,32,0.05)' }}
+                    style={{ ...commonStyle, border: 'none' }}
+                  >
+                    {content}
+                  </button>
+                )
+              })}
             </div>
           )}
         </div>
