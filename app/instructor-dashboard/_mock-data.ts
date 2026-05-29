@@ -1,7 +1,7 @@
 import type { ScheduleSlot, ScheduleEntry, Assessment, StudentGrade, Group, Student, AttendanceStatus, Day, Period, LessonPlan, Conversation, Message } from './_types'
 
 export const MOCK_TODAY_SCHEDULE: ScheduleSlot[] = [
-  { id: '1', time: '08:00 AM', subject: 'Advanced Physics', group: 'Class 10A', room: 'Lab 4A', status: 'completed' },
+  { id: '1', time: '08:00 AM', subject: '1', group: 'Class 10A', room: 'Lab 4A', status: 'completed' },
   { id: '2', time: '09:00 AM', subject: 'Physics Fundamentals', group: 'Class 11A', room: 'Room 302', status: 'live' },
   { id: '3', time: '10:30 AM', subject: 'Advanced Physics', group: 'Class 12A', room: 'Lab 4A', status: 'upcoming' },
   { id: '4', time: '11:30 AM', subject: 'Physics Lab', group: 'Class 10B', room: 'Lab 4A', status: 'upcoming' },

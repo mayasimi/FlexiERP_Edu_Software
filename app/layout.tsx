@@ -3,9 +3,9 @@ import './globals.css'
 import { Providers } from '@/components/Providers'
 
 export const metadata: Metadata = {
-  title: 'EduManage – School Administration System',
-  description: 'Comprehensive school management platform powered by EduManage',
-  icons: { icon: '/favicon.ico' },
+  title: 'FlexiSoftware – School Administration System',
+  description: 'Comprehensive school management platform powered by GWPL ',
+  icons: { icon: '/favicon.png' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

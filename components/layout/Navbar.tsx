@@ -4,10 +4,10 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Bell, BookOpen, ChevronDown, LogOut, Settings } from 'lucide-react'
-import { useAuthStore } from '@/lib/auth-store'
+import { useAuthStoreMounted } from '@/lib/auth-store'
 import { getInitials } from '@/lib/utils'
 
-const GOLD = '#C9A020'
+const GOLD   = '#C9A020'
 const BORDER = '#E8E4DC'
 
 const notifications = [
@@ -17,8 +17,8 @@ const notifications = [
 ]
 
 const typeColor: Record<string, string> = {
-  fee: GOLD,
-  result: '#10B981',
+  fee:        GOLD,
+  result:     '#10B981',
   attendance: '#EF4444',
 }
 
@@ -32,12 +32,8 @@ interface NavbarProps {
 
 function formatDateTime(date: Date) {
   return new Intl.DateTimeFormat('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
+    weekday: 'short', month: 'short', day: 'numeric',
+    year: 'numeric',  hour: 'numeric', minute: '2-digit',
   }).format(date)
 }
 
@@ -47,8 +43,8 @@ export default function Navbar({ userName, userRole, userEmail, settingsHref = '
   const [mounted, setMounted] = useState(false)
   const [now, setNow] = useState<Date | null>(null)
   const [showNotifications, setShowNotifications] = useState(false)
-  const [showProfile, setShowProfile] = useState(false)
-  const [logoFailed, setLogoFailed] = useState(false)
+  const [showProfile,       setShowProfile]       = useState(false)
+  const [logoFailed,        setLogoFailed]        = useState(false)
   const navRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
@@ -75,54 +71,31 @@ export default function Navbar({ userName, userRole, userEmail, settingsHref = '
         setShowProfile(false)
       }
     }
-
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const soften = (element: HTMLElement) => {
-    element.style.background = '#F7F6F3'
-    element.style.borderColor = 'rgba(201,160,32,0.35)'
-  }
-
-  const restore = (element: HTMLElement) => {
-    element.style.background = 'white'
-    element.style.borderColor = BORDER
-  }
+  const soften  = (el: HTMLElement) => { el.style.background = '#F7F6F3'; el.style.borderColor = 'rgba(201,160,32,0.35)' }
+  const restore = (el: HTMLElement) => { el.style.background = 'white';   el.style.borderColor = BORDER }
 
   return (
     <header
       ref={navRef}
       style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 60,
-        height: 64,
-        padding: '0 24px',
-        background: 'white',
-        borderBottom: `1px solid ${BORDER}`,
+        position: 'sticky', top: 0, zIndex: 60, height: 64, padding: '0 24px',
+        background: 'white', borderBottom: `1px solid ${BORDER}`,
         boxShadow: '0 1px 0 rgba(201,160,32,0.22)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 20,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20,
       }}
     >
+      {/* ── Brand ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 220 }}>
-        <div
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 8,
-            background: 'rgba(201,160,32,0.12)',
-            border: '1px solid rgba(201,160,32,0.28)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-            flexShrink: 0,
-          }}
-        >
+        <div style={{
+          width: 40, height: 40, borderRadius: 8,
+          background: 'rgba(201,160,32,0.12)', border: '1px solid rgba(201,160,32,0.28)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          overflow: 'hidden', flexShrink: 0,
+        }}>
           {!logoFailed ? (
             <Image
               src="/FLEXI_LOGO.png"
@@ -137,7 +110,7 @@ export default function Navbar({ userName, userRole, userEmail, settingsHref = '
           )}
         </div>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: '#0D0D0D', lineHeight: 1.1 }}>Flexi Software</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#0D0D0D', lineHeight: 1.1 }}>FlexiSoftware</div>
           <div style={{ fontSize: 12, color: '#6B6660', lineHeight: 1.2 }}>School Administration</div>
         </div>
       </div>
@@ -146,71 +119,28 @@ export default function Navbar({ userName, userRole, userEmail, settingsHref = '
         {now ? formatDateTime(now) : ''}
       </div>
 
+      {/* ── Right actions ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, minWidth: 290 }}>
+
+        {/* Notifications */}
         <div style={{ position: 'relative' }}>
           <button
-            type="button"
-            aria-label="Notifications"
-            onClick={() => {
-              setShowNotifications((value) => !value)
-              setShowProfile(false)
-            }}
-            onMouseEnter={(event) => soften(event.currentTarget)}
-            onMouseLeave={(event) => restore(event.currentTarget)}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 8,
-              border: `1px solid ${BORDER}`,
-              background: 'white',
-              color: '#0D0D0D',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              position: 'relative',
-              transition: 'all 0.18s ease',
-            }}
+            type="button" aria-label="Notifications"
+            onClick={() => { setShowNotifications(v => !v); setShowProfile(false) }}
+            onMouseEnter={e => soften(e.currentTarget)}
+            onMouseLeave={e => restore(e.currentTarget)}
+            style={{ width: 40, height: 40, borderRadius: 8, border: `1px solid ${BORDER}`, background: 'white', color: '#0D0D0D', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative', transition: 'all 0.18s ease' }}
           >
             <Bell size={18} />
             {unreadCount > 0 && (
-              <span
-                style={{
-                  position: 'absolute',
-                  top: -5,
-                  right: -5,
-                  minWidth: 18,
-                  height: 18,
-                  padding: '0 5px',
-                  borderRadius: 999,
-                  background: '#EF4444',
-                  color: 'white',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  lineHeight: '18px',
-                  textAlign: 'center',
-                  border: '2px solid white',
-                }}
-              >
+              <span style={{ position: 'absolute', top: -5, right: -5, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: '#EF4444', color: 'white', fontSize: 11, fontWeight: 700, lineHeight: '18px', textAlign: 'center', border: '2px solid white' }}>
                 {unreadCount}
               </span>
             )}
           </button>
 
           {showNotifications && (
-            <div
-              style={{
-                position: 'absolute',
-                right: 0,
-                top: 48,
-                width: 340,
-                background: 'white',
-                border: `1px solid ${BORDER}`,
-                borderRadius: 8,
-                boxShadow: '0 16px 36px rgba(13,13,13,0.14)',
-                overflow: 'hidden',
-              }}
-            >
+            <div style={{ position: 'absolute', right: 0, top: 48, width: 340, background: 'white', border: `1px solid ${BORDER}`, borderRadius: 8, boxShadow: '0 16px 36px rgba(13,13,13,0.14)', overflow: 'hidden' }}>
               <div style={{ padding: '14px 16px', borderBottom: `1px solid ${BORDER}` }}>
                 <div style={{ fontSize: 15, fontWeight: 700, color: '#0D0D0D' }}>Notifications</div>
                 <div style={{ fontSize: 12, color: '#6B6660', marginTop: 2 }}>{unreadCount} unread updates</div>
@@ -271,28 +201,14 @@ export default function Navbar({ userName, userRole, userEmail, settingsHref = '
           )}
         </div>
 
+        {/* Profile */}
         <div style={{ position: 'relative' }}>
           <button
             type="button"
-            onClick={() => {
-              setShowProfile((value) => !value)
-              setShowNotifications(false)
-            }}
-            onMouseEnter={(event) => soften(event.currentTarget)}
-            onMouseLeave={(event) => restore(event.currentTarget)}
-            style={{
-              height: 40,
-              padding: '0 10px 0 8px',
-              borderRadius: 8,
-              border: `1px solid ${BORDER}`,
-              background: 'white',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 9,
-              cursor: 'pointer',
-              transition: 'all 0.18s ease',
-              fontFamily: 'inherit',
-            }}
+            onClick={() => { setShowProfile(v => !v); setShowNotifications(false) }}
+            onMouseEnter={e => soften(e.currentTarget)}
+            onMouseLeave={e => restore(e.currentTarget)}
+            style={{ height: 40, padding: '0 10px 0 8px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'white', display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer', transition: 'all 0.18s ease', fontFamily: 'inherit' }}
           >
             <span style={{ width: 28, height: 28, borderRadius: 999, background: GOLD, color: 'white', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {getInitials(displayName)}
@@ -305,19 +221,7 @@ export default function Navbar({ userName, userRole, userEmail, settingsHref = '
           </button>
 
           {showProfile && (
-            <div
-              style={{
-                position: 'absolute',
-                right: 0,
-                top: 48,
-                width: 240,
-                background: 'white',
-                border: `1px solid ${BORDER}`,
-                borderRadius: 8,
-                boxShadow: '0 16px 36px rgba(13,13,13,0.14)',
-                overflow: 'hidden',
-              }}
-            >
+            <div style={{ position: 'absolute', right: 0, top: 48, width: 240, background: 'white', border: `1px solid ${BORDER}`, borderRadius: 8, boxShadow: '0 16px 36px rgba(13,13,13,0.14)', overflow: 'hidden' }}>
               <div style={{ padding: 16, borderBottom: `1px solid ${BORDER}` }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: '#0D0D0D' }}>{displayName}</div>
                 <div style={{ fontSize: 12, color: '#6B6660', marginTop: 2 }}>{displayEmail}</div>
@@ -326,8 +230,8 @@ export default function Navbar({ userName, userRole, userEmail, settingsHref = '
               <Link
                 href={settingsHref}
                 onClick={() => setShowProfile(false)}
-                onMouseEnter={(event) => { event.currentTarget.style.background = '#F7F6F3' }}
-                onMouseLeave={(event) => { event.currentTarget.style.background = 'white' }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#F7F6F3' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'white' }}
                 style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', color: '#0D0D0D', textDecoration: 'none', fontSize: 14, transition: 'background 0.18s ease' }}
               >
                 <Settings size={16} style={{ color: GOLD }} />
@@ -335,25 +239,10 @@ export default function Navbar({ userName, userRole, userEmail, settingsHref = '
               </Link>
               <button
                 type="button"
-                onClick={logout}
-                onMouseEnter={(event) => { event.currentTarget.style.background = '#FEF2F2' }}
-                onMouseLeave={(event) => { event.currentTarget.style.background = 'white' }}
-                style={{
-                  width: '100%',
-                  border: 'none',
-                  borderTop: `1px solid ${BORDER}`,
-                  background: 'white',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '12px 16px',
-                  color: '#991B1B',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  fontSize: 14,
-                  textAlign: 'left',
-                  transition: 'background 0.18s ease',
-                }}
+                onClick={() => logout()}
+                onMouseEnter={e => { e.currentTarget.style.background = '#FEF2F2' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'white' }}
+                style={{ width: '100%', border: 'none', borderTop: `1px solid ${BORDER}`, background: 'white', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', color: '#991B1B', cursor: 'pointer', fontFamily: 'inherit', fontSize: 14, textAlign: 'left', transition: 'background 0.18s ease' }}
               >
                 <LogOut size={16} />
                 Logout
@@ -361,6 +250,7 @@ export default function Navbar({ userName, userRole, userEmail, settingsHref = '
             </div>
           )}
         </div>
+
       </div>
     </header>
   )

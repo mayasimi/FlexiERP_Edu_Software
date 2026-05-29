@@ -1,25 +1,30 @@
-'use client'
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { useAuthStore } from '@/lib/auth-store'
+'use client';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuthStoreMounted } from '@/lib/auth-store';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuthStore()
-  const router = useRouter()
+  const { isAuthenticated, isLoading, mounted } = useAuthStoreMounted();
+  const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.push('/login')
+    // Only redirect AFTER mounted and loading is done
+    if (mounted && !isLoading && !isAuthenticated) {
+      router.push('/login');
     }
-  }, [isAuthenticated, isLoading, router])
+  }, [mounted, isAuthenticated, isLoading, router]);
 
-  if (isLoading || !isAuthenticated) {
+  // Show loading while store is hydrating from localStorage
+  if (!mounted || isLoading) {
     return (
       <div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh' }}>
         <p>Loading...</p>
       </div>
-    )
+    );
   }
 
-  return <>{children}</>
+  // Don't flash content if not authenticated
+  if (!isAuthenticated) return null;
+
+  return <>{children}</>;
 }

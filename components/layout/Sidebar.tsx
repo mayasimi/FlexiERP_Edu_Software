@@ -5,59 +5,67 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, UserPlus, CreditCard, BookOpen, Package,
   CalendarDays, ClipboardCheck, Settings, Users, Mail,
-  User, BarChart3, ExternalLink, Zap, FileText, Bell, ClipboardList, WalletCards
+  User, BarChart3, ExternalLink, Zap, FileText, Bell,
+  ClipboardList, WalletCards, LogOut
 } from 'lucide-react'
-import { useAuthStore } from '@/lib/auth-store'
+import { useAuthStoreMounted } from '@/lib/auth-store'
 import { cn } from '@/lib/utils'
 
 const adminNavItems = [
-  { label: 'Dashboard',       href: '/dashboard',       icon: LayoutDashboard },
-  { label: 'Admission',       href: '/admission',       icon: UserPlus },
-  { label: 'Fee Management',  href: '/fee-management',  icon: CreditCard },
-  { label: 'Payroll',         href: '/admin/payroll',   icon: WalletCards },
-  { label: 'Academics',       href: '/academics',       icon: BookOpen },
-  { label: 'Inventory',       href: '/inventory',       icon: Package },
-  { label: 'Timetable',       href: '/timetable',       icon: CalendarDays },
-  { label: 'Attendance',      href: '/attendance',      icon: ClipboardCheck },
-  { label: 'Settings',        href: '/settings',        icon: Settings },
-  { label: 'Staff Management',href: '/staff',           icon: Users },
-  { label: 'Messaging',       href: '/messaging',       icon: Mail },
-  { label: 'Student Info',    href: '/students',        icon: User },
-  { label: 'Reports',         href: '/reports',         icon: BarChart3 },
-  { label: 'Results',         href: '/results',         icon: Zap },
-  { label: 'Report Card',     href: '/report-card',     icon: FileText },
-  { label: 'Portal',          href: '/portal',          icon: ExternalLink },
+  { label: 'Dashboard',        href: '/dashboard',       icon: LayoutDashboard },
+  { label: 'Admission',        href: '/admission',       icon: UserPlus },
+  { label: 'Fee Management',   href: '/fee-management',  icon: CreditCard },
+  { label: 'Payroll',          href: '/admin/payroll',   icon: WalletCards },
+  { label: 'Academics',        href: '/academics',       icon: BookOpen },
+  { label: 'Inventory',        href: '/inventory',       icon: Package },
+  { label: 'Timetable',        href: '/timetable',       icon: CalendarDays },
+  { label: 'Attendance',       href: '/attendance',      icon: ClipboardCheck },
+  { label: 'Settings',         href: '/settings',        icon: Settings },
+  { label: 'Staff Management', href: '/staff',           icon: Users },
+  { label: 'Messaging',        href: '/messaging',       icon: Mail },
+  { label: 'Student Info',     href: '/students',        icon: User },
+  { label: 'Reports',          href: '/reports',         icon: BarChart3 },
+  { label: 'Results',          href: '/results',         icon: Zap },
+  { label: 'Report Card',      href: '/report-card',     icon: FileText },
+  { label: 'Portal',           href: '/portal',          icon: ExternalLink },
 ]
 
 const studentNavItems = [
-  { label: 'Dashboard',       href: '/dashboard',       icon: LayoutDashboard },
-  { label: 'Assignments/Projects', href: '/projects',   icon: ClipboardList },
-  { label: 'Subjects & Scores', href: '/subjects',      icon: BookOpen },
-  { label: 'Scheme of Work',   href: '/scheme-of-work', icon: CalendarDays },
-  { label: 'School Fees',     href: '/fees',           icon: CreditCard },
-  { label: 'Attendance',      href: '/attendance',      icon: ClipboardCheck },
-  { label: 'Report Card',     href: '/report-card',     icon: FileText },
-  { label: 'Portal',          href: '/portal',         icon: ExternalLink },
+  { label: 'Dashboard',             href: '/dashboard',       icon: LayoutDashboard },
+  { label: 'Assignments/Projects',  href: '/projects',        icon: ClipboardList },
+  { label: 'Subjects & Scores',     href: '/subjects',        icon: BookOpen },
+  { label: 'Scheme of Work',        href: '/scheme-of-work',  icon: CalendarDays },
+  { label: 'School Fees',           href: '/fees',            icon: CreditCard },
+  { label: 'Attendance',            href: '/attendance',      icon: ClipboardCheck },
+  { label: 'Report Card',           href: '/report-card',     icon: FileText },
+  { label: 'Portal',                href: '/portal',          icon: ExternalLink },
 ]
 
 const parentNavItems = [
-  { label: 'My Children',     href: '/switch',         icon: Users },
-  { label: 'Notifications',   href: '/notifications',  icon: Bell },
-  { label: 'Dashboard',       href: '/dashboard',       icon: LayoutDashboard },
-  { label: 'Subjects & Scores', href: '/subjects',      icon: BookOpen },
-  { label: 'School Fees',     href: '/fees',           icon: CreditCard },
-  { label: 'Attendance',      href: '/attendance',      icon: ClipboardCheck },
-  { label: 'Report Card',     href: '/report-card',     icon: FileText },
-  { label: 'Portal',          href: '/portal',         icon: ExternalLink },
+  { label: 'My Children',       href: '/switch',          icon: Users },
+  { label: 'Notifications',     href: '/notifications',   icon: Bell },
+  { label: 'Dashboard',         href: '/dashboard',       icon: LayoutDashboard },
+  { label: 'Subjects & Scores', href: '/subjects',        icon: BookOpen },
+  { label: 'School Fees',       href: '/fees',            icon: CreditCard },
+  { label: 'Attendance',        href: '/attendance',      icon: ClipboardCheck },
+  { label: 'Report Card',       href: '/report-card',     icon: FileText },
+  { label: 'Portal',            href: '/portal',          icon: ExternalLink },
 ]
 
 export default function Sidebar() {
   const pathname = usePathname()
-  const { role } = useAuthStore()
+  const { role, user, logout, mounted } = useAuthStoreMounted()
+
+  // Return null on server to prevent hydration mismatch
+  if (!mounted) return null
+
   const navItems =
     role === 'student' ? studentNavItems :
-    role === 'parent' ? parentNavItems :
+    role === 'parent'  ? parentNavItems  :
     adminNavItems
+
+  const displayName = (mounted ? user?.name : null) || 'User'
+  const initials    = displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
 
   return (
     <aside className="sidebar">
@@ -73,6 +81,54 @@ export default function Sidebar() {
           )
         })}
       </nav>
+
+      {/* ── User info + Logout ── */}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: '12px' }}>
+        {/* User info */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', marginBottom: 4 }}>
+          <div style={{
+            width: 30, height: 30, borderRadius: '50%',
+            background: 'rgba(201,160,32,0.25)', color: '#C9A020',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 11, fontWeight: 700, flexShrink: 0,
+          }}>
+            {initials}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {displayName}
+            </div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', textTransform: 'capitalize' }}>
+              {mounted ? (role ?? '') : ''}
+            </div>
+          </div>
+        </div>
+
+        {/* Logout button */}
+        <button
+          type="button"
+          onClick={() => logout()}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            width: '100%', padding: '8px 12px', borderRadius: 8,
+            background: 'transparent', border: 'none',
+            color: 'rgba(255,255,255,0.45)', cursor: 'pointer',
+            fontSize: 13, fontFamily: 'inherit',
+            transition: 'color 0.18s ease, background 0.18s ease',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.color = '#EF4444'
+            e.currentTarget.style.background = 'rgba(239,68,68,0.08)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.color = 'rgba(255,255,255,0.45)'
+            e.currentTarget.style.background = 'transparent'
+          }}
+        >
+          <LogOut size={15} />
+          <span>Logout</span>
+        </button>
+      </div>
     </aside>
   )
 }
