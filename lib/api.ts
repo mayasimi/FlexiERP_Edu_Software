@@ -28,7 +28,8 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 api.interceptors.response.use(
   (res: AxiosResponse) => res,
   (error) => {
-    if (error.response?.status === 401 && typeof window !== 'undefined') {
+    const authBypassEnabled = process.env.NEXT_PUBLIC_AUTH_BYPASS === 'true'
+    if (error.response?.status === 401 && typeof window !== 'undefined' && !authBypassEnabled) {
       sessionStorage.removeItem('edu_token')
       window.location.href = '/login'
     }
