@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, UserPlus, CreditCard, BookOpen, Package,
   CalendarDays, ClipboardCheck, Settings, Users, Mail,
@@ -71,6 +72,46 @@ export default function Sidebar() {
     <aside className="sidebar">
       <nav className="flex-1 overflow-y-auto py-2 space-y-0.5">
         {navItems.map(({ label, href, icon: Icon }) => {
+          if (role !== 'student' && role !== 'parent' && href === '/results') {
+            const parentActive = pathname === '/results' || pathname.startsWith('/results/')
+            const children = [
+              { label: 'Result Settings', href: '/results?tab=settings', active: pathname === '/results' && resultsTab === 'settings' },
+              { label: 'View Results', href: '/results?tab=view', active: pathname === '/results' && resultsTab === 'view' },
+            ]
+            return (
+              <div key={href} className="px-2">
+                <button
+                  type="button"
+                  onClick={() => setResultsOpen((v) => !v)}
+                  className={cn('sidebar-nav-item w-full', parentActive && 'active')}
+                  aria-expanded={resultsOpen}
+                >
+                  <Icon size={16} />
+                  <span className="flex-1">{label}</span>
+                  <span style={{ transform: resultsOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease', opacity: 0.8 }}>
+                    ▶
+                  </span>
+                </button>
+
+                {resultsOpen ? (
+                  <div className="mt-1 space-y-0.5">
+                    {children.map((c) => (
+                      <Link
+                        key={c.href}
+                        href={c.href}
+                        className={cn('sidebar-nav-item', c.active && 'active')}
+                        style={{ marginLeft: 12, width: 'calc(100% - 12px)' }}
+                      >
+                        <span style={{ width: 6, height: 6, borderRadius: 999, background: c.active ? '#C9A020' : 'rgba(255,255,255,0.35)' }} />
+                        <span>{c.label}</span>
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            )
+          }
+
           const active = pathname === href || pathname.startsWith(href + '/')
           return (
             <Link key={href} href={href}

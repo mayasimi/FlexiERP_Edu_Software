@@ -1,9 +1,7 @@
 'use client'
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMemo, useRef, useState } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import Topbar from '@/components/layout/Topbar'
-import { staffApi } from '@/lib/api'
 import { getInitials } from '@/lib/utils'
 import { Users, UserCheck, UserX, LayoutGrid, List, Eye, Pencil } from 'lucide-react'
 
@@ -11,6 +9,16 @@ const statusColors: Record<string, { bg: string; text: string }> = {
   Active:   { bg: '#ECFDF5', text: '#059669' },
   Inactive: { bg: '#FEF2F2', text: '#991B1B' },
   'On Leave': { bg: '#FFF7ED', text: '#C2410C' },
+}
+
+type StaffMember = {
+  id: string
+  name: string
+  role: string
+  department: string
+  email: string
+  status: 'Active' | 'On Leave'
+  avatar: string | null
 }
 
 export default function StaffPage() {
@@ -32,7 +40,7 @@ export default function StaffPage() {
 
   return (
     <AppLayout>
-      <Topbar action={{ label: 'Add Staff Member', onClick: () => {} }} />
+      <Topbar action={{ label: 'Add Staff Member', onClick: openAdd }} />
 
       <div className="page-header animate-in">
         <div className="gold-accent" />
@@ -60,7 +68,7 @@ export default function StaffPage() {
           ))}
         </div>
 
-        {/* Filters + View Toggle */}
+        {/* Filters */}
         <div className="flex flex-wrap gap-3 items-end justify-between animate-in stagger-2">
           <div className="flex gap-2 flex-wrap">
             <input
@@ -123,14 +131,27 @@ export default function StaffPage() {
                     <div className="flex items-center gap-2 truncate" style={{ color: '#6B6660' }}>
                       <span>✉</span> {member.email}
                     </div>
-                  </div>
+                  )}
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) onPickAvatar(file)
+                      e.target.value = ''
+                    }}
+                  />
                   <div className="flex gap-2">
-                    <button className="flex-1 btn-outline text-xs py-1.5 flex items-center justify-center gap-1">
-                      <Eye size={13} /> View
+                    <button type="button" className="btn-outline text-xs px-3 py-1.5" onClick={() => fileRef.current?.click()}>
+                      {formAvatar ? 'Change' : 'Upload'}
                     </button>
-                    <button className="btn-outline px-3 py-1.5 text-xs">
-                      <Pencil size={13} />
-                    </button>
+                    {formAvatar ? (
+                      <button type="button" className="btn-outline text-xs px-3 py-1.5" onClick={() => setFormAvatar(null)}>
+                        Remove
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               )
@@ -185,8 +206,8 @@ export default function StaffPage() {
               </tbody>
             </table>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </AppLayout>
   )
 }

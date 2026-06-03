@@ -1,18 +1,71 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Upload, Clock, Download } from 'lucide-react'
 import { PageHeader, StudentAvatar } from '../_components'
 import { teacherApi, attendanceApi } from '@/lib/api'
 import { MOCK_PERIODS } from '../_mock-data'
 import type { AttendanceStatus, AttendanceMode } from '../_types'
+import { adminMockDb } from '@/lib/admin-mock-db'
 import toast from 'react-hot-toast'
 
 const statusColors: Record<AttendanceStatus, { bg: string; text: string; active: string }> = {
   P: { bg: '#ECFDF5', text: '#065F46', active: '#10B981' },
   A: { bg: '#FEF2F2', text: '#991B1B', active: '#EF4444' },
   L: { bg: '#FFF7ED', text: '#9A3412', active: '#F59E0B' },
-  H: { bg: '#F3F4F6', text: '#4B5563', active: '#9CA3AF' },
+  S: { bg: '#F3F4F6', text: '#4B5563', active: '#9CA3AF' },
+}
+
+type AttendanceStudent = { id: string; name: string; avatar: string }
+
+const toInitials = (name: string) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  const first = parts[0]?.[0] ?? ''
+  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? '' : ''
+  return (first + last).toUpperCase()
+}
+
+const escapeCsv = (value: unknown) => {
+  const raw = (value ?? '').toString()
+  if (/[",\n\r]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`
+  return raw
+}
+
+const parseCsvLine = (line: string) => {
+  const out: string[] = []
+  let cur = ''
+  let inQuotes = false
+
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i]
+    if (ch === '"') {
+      const next = line[i + 1]
+      if (inQuotes && next === '"') {
+        cur += '"'
+        i += 1
+        continue
+      }
+      inQuotes = !inQuotes
+      continue
+    }
+    if (ch === ',' && !inQuotes) {
+      out.push(cur)
+      cur = ''
+      continue
+    }
+    cur += ch
+  }
+  out.push(cur)
+  return out.map((v) => v.trim())
+}
+
+const parseCsv = (text: string) => {
+  const normalized = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const lines = normalized.split('\n').filter((l) => l.trim().length > 0)
+  if (lines.length === 0) return { headers: [] as string[], rows: [] as string[][] }
+  const headers = parseCsvLine(lines[0]).map((h) => h.trim())
+  const rows = lines.slice(1).map((l) => parseCsvLine(l))
+  return { headers, rows }
 }
 
 // ── CSV helpers (kept from original) ──────────────────────────────────────
@@ -189,7 +242,7 @@ export default function AttendanceSection() {
   }
 
   // ── Summary counts ────────────────────────────────────────────────────────
-  const counts = { P: 0, A: 0, L: 0, H: 0 }
+  const counts = { P: 0, A: 0, L: 0, S: 0 }
   students.forEach((s: any) => {
     const st = getStudentStatus(s.id)
     if (st in counts) counts[st as AttendanceStatus]++
@@ -205,6 +258,62 @@ export default function AttendanceSection() {
 
   const currentGroupName = groups.find((g: any) => g.id === selectedGroup)?.name ?? '—'
   const currentSubject   = groups.find((g: any) => g.id === selectedGroup)?.subject ?? '—'
+    students.forEach(s => {
+      if (periodAttendance[`${s.id}-${periodId}`] === 'P') present++
+    })
+    return { present, total }
+  }
+
+  const downloadAttendanceTemplate = () => {
+    const group = selectedGroup
+    const match = group.match(/Class\s+(\d+)\s*([A-Z])/i)
+    const gradeNumber = match?.[1] ?? ''
+    const sectionLetter = (match?.[2] ?? '').toUpperCase()
+    const grade = gradeNumber ? `Grade ${gradeNumber}` : ''
+    const section = sectionLetter ? `Section ${sectionLetter}` : ''
+
+    const headers = [
+      'Student ID',
+      'Student Name',
+      'Grade',
+      'Section',
+      'Group',
+      'Date',
+      'Mode',
+      'Subject',
+      'Period',
+      'Status (P/A/L/S)',
+      'Remarks',
+    ]
+
+    const periodLabel =
+      mode === 'period' ? `P${MOCK_PERIODS.find((p) => p.id === selectedPeriod)?.number ?? ''}` : ''
+
+    const rows = students.map((s) => [
+      s.id,
+      s.name,
+      grade,
+      section,
+      group,
+      date,
+      mode,
+      selectedSubject,
+      periodLabel,
+      '',
+      '',
+    ])
+
+    const csv = ['\uFEFF' + headers.map(escapeCsv).join(','), ...rows.map((r) => r.map(escapeCsv).join(','))].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `attendance_${group.replace(/\s+/g, '_')}_${date}_${mode}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div>
@@ -321,7 +430,7 @@ export default function AttendanceSection() {
                         </td>
                         <td>
                           <div className="flex gap-1">
-                            {(['P', 'A', 'L', 'H'] as AttendanceStatus[]).map(s => {
+                {(['P', 'A', 'L', 'S'] as AttendanceStatus[]).map(s => {
                               const c = statusColors[s]
                               const isActive = cur === s
                               return (
@@ -373,7 +482,7 @@ export default function AttendanceSection() {
                 { label: 'Present', key: 'P' as AttendanceStatus, color: '#10B981' },
                 { label: 'Absent',  key: 'A' as AttendanceStatus, color: '#EF4444' },
                 { label: 'Late',    key: 'L' as AttendanceStatus, color: '#F59E0B' },
-                { label: 'Holiday', key: 'H' as AttendanceStatus, color: '#9CA3AF' },
+                { label: 'Sick',    key: 'S' as AttendanceStatus, color: '#9CA3AF' },
               ]).map(({ label, key, color }) => (
                 <div key={key} className="flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: '#E4E1D8' }}>
                   <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full" style={{ background: color }} /><span className="text-sm">{label}</span></div>

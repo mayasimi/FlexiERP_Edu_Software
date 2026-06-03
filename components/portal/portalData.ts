@@ -184,6 +184,7 @@ export const NAV: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
   { id: 'projects', label: 'Assignments/Projects', Icon: ClipboardList },
   { id: 'scheme', label: 'Scheme of Work', Icon: BookOpen },
+  { id: 'policy', label: 'Policy & Handbook', Icon: FileText },
   { id: 'subjects', label: 'Subjects & Scores', Icon: BookOpen },
   { id: 'fees', label: 'School Fees', Icon: Banknote },
   { id: 'attendance', label: 'Attendance', Icon: CalendarCheck },

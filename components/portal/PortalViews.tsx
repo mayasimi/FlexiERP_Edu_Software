@@ -1015,9 +1015,21 @@ export function ReportCard() {
   )
 }
 
-export function ParentNotifications({ selectedNotificationId }: { selectedNotificationId?: string | null } = {}) {
+export function ParentNotifications({
+  selectedNotificationId,
+  baseHref = '/notifications',
+}: {
+  selectedNotificationId?: string | null
+  baseHref?: string
+} = {}) {
   const notifications = mockData.parentNotifications
-  const selectedNotification = notifications.find((item) => item.id === selectedNotificationId) || null
+  const notificationAliases: Record<string, string> = {
+    '1': 'fee-balance-reminder',
+    '2': 'result-published',
+    '3': 'attendance-alert',
+  }
+  const activeNotificationId = selectedNotificationId ? notificationAliases[selectedNotificationId] ?? selectedNotificationId : null
+  const selectedNotification = notifications.find((item) => item.id === activeNotificationId) || null
   const highPriority = notifications.filter((item) => item.priority === 'High').length
   const categoryColor: Record<string, string> = {
     Meeting: GOLD,
@@ -1027,11 +1039,11 @@ export function ParentNotifications({ selectedNotificationId }: { selectedNotifi
   }
 
   useEffect(() => {
-    if (!selectedNotificationId) return
+    if (!activeNotificationId) return
 
-    const element = document.getElementById(`notification-${selectedNotificationId}`)
+    const element = document.getElementById(`notification-${activeNotificationId}`)
     element?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [selectedNotificationId])
+  }, [activeNotificationId])
 
   return (
     <div>
@@ -1061,11 +1073,11 @@ export function ParentNotifications({ selectedNotificationId }: { selectedNotifi
           <div style={{ padding: '6px 20px 18px' }}>
             {notifications.map((item, index) => {
               const color = categoryColor[item.category] || GOLD
-              const isSelected = item.id === selectedNotificationId
+              const isSelected = item.id === activeNotificationId
               return (
                 <Link
                   key={item.id}
-                  href={`/notifications?notification=${item.id}`}
+                  href={`${baseHref}${baseHref.includes('?') ? '&' : '?'}notification=${item.id}`}
                   id={`notification-${item.id}`}
                   style={{
                     display: 'grid',
@@ -1193,6 +1205,147 @@ export function ParentNotifications({ selectedNotificationId }: { selectedNotifi
         </Card>
         )}
       </div>
+    </div>
+  )
+}
+
+export function SchoolPolicyHandbook({ role }: { role: RoleType }) {
+  const keyPolicies = [
+    {
+      title: 'Attendance & Punctuality',
+      text: 'Students are expected to be in school before 7:45 AM. Repeated lateness, unexplained absence, or early pickup must be discussed with the class teacher.',
+    },
+    {
+      title: 'Uniform & Appearance',
+      text: 'Complete school uniform, proper footwear, student ID, and neat grooming are required on all school days and official activities.',
+    },
+    {
+      title: 'Digital Conduct',
+      text: 'Phones, tablets, and internet access must be used only when approved for learning. Recording, sharing, or posting school content without permission is not allowed.',
+    },
+    {
+      title: 'Assessment Integrity',
+      text: 'Students must complete tests, assignments, projects, and examinations honestly. Any form of cheating or impersonation is treated as a serious misconduct issue.',
+    },
+  ]
+
+  const handbookSections = [
+    ['Daily Arrival', 'Morning assembly begins at 7:50 AM. Students should report to class immediately after assembly.'],
+    ['Health & Safety', 'Report illness, injury, bullying, unsafe behavior, or damaged facilities to a teacher, nurse, or administrator immediately.'],
+    ['Parent Communication', 'Parents should use official portal messages, class teacher contact hours, or scheduled office visits for school matters.'],
+    ['Homework & Projects', 'Assignments should be submitted by the due date with the student name, class, subject, and teacher clearly stated.'],
+    ['Library & Labs', 'Books, laboratory materials, sports equipment, and ICT devices must be handled carefully and returned in good condition.'],
+    ['Discipline Steps', 'Correction may include verbal guidance, written reflection, parent conference, community service, suspension, or referral to management.'],
+  ]
+
+  const quickFacts = [
+    ['School Day', '7:45 AM - 3:00 PM'],
+    ['Class Teacher', mockData.student.formTeacher],
+    ['Current Term', `${mockData.term}, ${mockData.session}`],
+    ['Applies To', role === 'parent' ? 'All linked children' : mockData.student.class],
+  ]
+
+  return (
+    <div>
+      <div className='policy-hero' style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.25fr) minmax(260px,0.75fr)', gap: 16, marginBottom: 18, alignItems: 'stretch' }}>
+        <Card style={{ background: '#0D0D0D', color: '#FFFFFF', borderColor: '#222', overflow: 'hidden', position: 'relative', minHeight: 250 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(201,160,32,0.22), rgba(55,138,221,0.10) 42%, rgba(29,158,117,0.12))' }} />
+          <div style={{ position: 'relative', display: 'grid', gap: 18 }}>
+            <div style={{ width: 52, height: 52, borderRadius: 12, background: GOLD, color: '#0D0D0D', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <BookMarked size={25} />
+            </div>
+            <div>
+              <p style={{ margin: 0, color: GOLD, fontSize: 11, letterSpacing: 1.3, textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 900 }}>{mockData.schoolName}</p>
+              <h2 style={{ margin: '8px 0 0', color: '#FFFFFF', fontSize: 34, lineHeight: 1.12, fontFamily: "'Georgia',serif", fontWeight: 400 }}>School Policy & Student Handbook</h2>
+              <p style={{ margin: '12px 0 0', color: '#F5F0E8', fontSize: 14, lineHeight: 1.7, maxWidth: 760 }}>
+                A single reference for conduct, attendance, safety, academic expectations, and parent-student responsibilities.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <GoldBadge>Updated {mockData.session}</GoldBadge>
+              <GoldBadge color={BLUE}>{role === 'parent' ? 'Parent Copy' : 'Student Copy'}</GoldBadge>
+              <GoldBadge color={GREEN}>Active Policy</GoldBadge>
+            </div>
+          </div>
+        </Card>
+
+        <Card style={{ display: 'grid', gap: 12 }}>
+          <CardLabel>Quick Reference</CardLabel>
+          {quickFacts.map(([label, value]) => (
+            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderBottom: label !== 'Applies To' ? `1px solid ${BORDER}` : 'none' }}>
+              <span style={{ color: '#9B9590', fontSize: 11, fontWeight: 900, letterSpacing: 0.8, textTransform: 'uppercase' }}>{label}</span>
+              <span style={{ color: '#0D0D0D', fontSize: 13, fontWeight: 800, textAlign: 'right' }}>{value}</span>
+            </div>
+          ))}
+          <button
+            type='button'
+            onClick={() => window.print()}
+            style={{ marginTop: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#0D0D0D', border: 'none', color: '#FFFFFF', borderRadius: 8, padding: '11px 14px', fontSize: 12, fontWeight: 900, cursor: 'pointer' }}
+          >
+            <Printer size={14} /> Print Handbook
+          </button>
+        </Card>
+      </div>
+
+      <div className='policy-grid' style={{ display: 'grid', gridTemplateColumns: 'minmax(0,0.95fr) minmax(0,1.05fr)', gap: 16, alignItems: 'start' }}>
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+            <CardLabel>Core School Policies</CardLabel>
+            <GoldBadge color={RED}>Mandatory</GoldBadge>
+          </div>
+          <div style={{ display: 'grid', gap: 12 }}>
+            {keyPolicies.map((policy, index) => (
+              <div key={policy.title} style={{ display: 'grid', gridTemplateColumns: '36px 1fr', gap: 12, paddingBottom: index < keyPolicies.length - 1 ? 12 : 0, borderBottom: index < keyPolicies.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
+                <div style={{ width: 36, height: 36, borderRadius: 9, background: `${GOLD}14`, border: `1px solid ${GOLD}33`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: GOLD, fontWeight: 900, fontFamily: 'monospace' }}>
+                  {index + 1}
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, color: '#0D0D0D', fontSize: 15, fontWeight: 850 }}>{policy.title}</h3>
+                  <p style={{ margin: '6px 0 0', color: '#5C5750', fontSize: 13, lineHeight: 1.6 }}>{policy.text}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+            <CardLabel>Student Handbook</CardLabel>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: GREEN, fontSize: 12, fontWeight: 900 }}>
+              <CheckCircle2 size={15} /> Available
+            </span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 10 }}>
+            {handbookSections.map(([title, text]) => (
+              <div key={title} style={{ background: '#FAFAF8', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 13, minHeight: 120 }}>
+                <h3 style={{ margin: 0, color: '#0D0D0D', fontSize: 14, fontWeight: 850 }}>{title}</h3>
+                <p style={{ margin: '8px 0 0', color: '#5C5750', fontSize: 12, lineHeight: 1.55 }}>{text}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      <Card style={{ marginTop: 16, background: `${BLUE}0D`, borderColor: `${BLUE}33` }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 12, alignItems: 'start' }}>
+          <AlertCircle size={20} color={BLUE} />
+          <div>
+            <p style={{ margin: 0, color: '#0D0D0D', fontSize: 14, fontWeight: 900 }}>Acknowledgement</p>
+            <p style={{ margin: '6px 0 0', color: '#5C5750', fontSize: 13, lineHeight: 1.65 }}>
+              Students and parents are expected to review this handbook each term. Questions should be directed to the class teacher or school administration through the official portal.
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      <style jsx>{`
+        @media (max-width: 900px) {
+          .policy-hero,
+          .policy-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </div>
   )
 }
