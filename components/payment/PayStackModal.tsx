@@ -39,10 +39,12 @@ export default function PayStackModal({
 }: PayStackModalProps) {
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('idle')
   const [errorMessage, setErrorMessage] = useState('')
+
   const publicKey = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || ''
   const hasPaystackKey = isValidPaystackPublicKey(publicKey)
   const selectedTotal = selectedFees.reduce((sum, fee) => sum + fee.amount, 0)
   const isAmountValid = selectedFees.length > 0 && selectedTotal === totalAmount && totalAmount > 0
+
 
   const reference = useMemo(() => `fees-${studentId}-${Date.now()}`, [studentId])
   const initializePayment = usePaystackPayment({

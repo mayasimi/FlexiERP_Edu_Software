@@ -7,6 +7,7 @@ import PortalSidebar from './PortalSidebar'
 import { Dashboard, Subjects, Fees, Attendance, ReportCard, ParentSwitch, ParentNotifications, StudentProjects } from './PortalViews'
 import { SchemeOfWorkView } from '@/components/dashboard/StudentDashboard'
 import { PageType, RoleType } from './portalTypes'
+import { useAuthStoreMounted } from '@/lib/auth-store'
 
 const PAGE_TITLES: Record<PageType, string> = {
   dashboard: 'Dashboard Overview',
@@ -26,9 +27,13 @@ export default function PortalPage() {
   const [page, setPage] = useState<PageType>('dashboard')
   const [activeChild, setActiveChild] = useState(0)
   const selectedNotificationId = searchParams.get('notification')
-  const portalUser = role === 'parent'
-    ? { name: 'Parent User', email: 'parent@school.edu', role: 'Parent' }
-    : { name: 'Student User', email: 'student@school.edu', role: 'Student' }
+  const { user, mounted } = useAuthStoreMounted()
+
+  const portalUser = {
+    name:  (mounted ? user?.name  : null) ?? (role === 'parent' ? 'Parent User'  : 'Student User'),
+    email: (mounted ? user?.email : null) ?? (role === 'parent' ? 'parent@school.edu' : 'student@school.edu'),
+    role:  (mounted && user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : role === 'parent' ? 'Parent' : 'Student'),
+  }
 
   useEffect(() => {
     const pageParam = searchParams.get('page')

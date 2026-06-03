@@ -11,14 +11,18 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
 // ─── Axios Instance ─────────────────────────────────────────────────────────
 const api: AxiosInstance = axios.create({
   baseURL: API_URL,
-  headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-  withCredentials: true, // for Laravel Sanctum cookie auth
+  headers: { 
+    'Content-Type': 'application/json', 
+    Accept: 'application/json',
+    'ngrok-skip-browser-warning': 'true', 
+  },
+  withCredentials: true,
 })
 
 // ─── Request Interceptor: attach Bearer token ────────────────────────────────
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (typeof window !== 'undefined') {
-    const token = sessionStorage.getItem('edu_token')
+    const token = localStorage.getItem('flexi_token')  // ← was sessionStorage 'edu_token'
     if (token) config.headers.Authorization = `Bearer ${token}`
   }
   return config
@@ -28,9 +32,10 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 api.interceptors.response.use(
   (res: AxiosResponse) => res,
   (error) => {
-    const authBypassEnabled = ['1', 'true', 'yes'].includes((process.env.NEXT_PUBLIC_AUTH_BYPASS ?? '').toLowerCase())
-    if (error.response?.status === 401 && typeof window !== 'undefined' && !authBypassEnabled) {
-      sessionStorage.removeItem('edu_token')
+    if (error.response?.status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('flexi_token')   // ← was sessionStorage 'edu_token'
+      localStorage.removeItem('flexi_user')
+      localStorage.removeItem('edu_user_role')
       window.location.href = '/login'
     }
     return Promise.reject(error)

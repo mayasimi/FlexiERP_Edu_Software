@@ -38,7 +38,24 @@ export default function LoginPage() {
       setError(message)
       toast.error(message)
     }
+
+    toast.success('Welcome back!')
+
+    // Read role AFTER login completes
+    const currentRole = useAuthStore.getState().role
+
+  if (currentRole === 'parent' || currentRole === 'student') {
+      window.location.href = '/portal'
+    } else if (currentRole === 'teacher') {
+      window.location.href = '/instructor-dashboard'
+    } else {
+      window.location.href = '/dashboard'
   }
+
+  } catch {
+    toast.error('Invalid credentials. Please try again.')
+  }
+}
 
   return (
     <div className="min-h-screen flex flex-col"
