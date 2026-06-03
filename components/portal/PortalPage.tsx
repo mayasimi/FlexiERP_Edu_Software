@@ -4,7 +4,7 @@ import { useSearchParams } from 'next/navigation'
 import Navbar from '@/components/layout/Navbar'
 import AppFooter from '@/components/layout/AppFooter'
 import PortalSidebar from './PortalSidebar'
-import { Dashboard, Subjects, Fees, Attendance, ReportCard, ParentSwitch, ParentNotifications, StudentProjects } from './PortalViews'
+import { Dashboard, Subjects, Fees, Attendance, ReportCard, ParentSwitch, ParentNotifications, StudentProjects, SchoolPolicyHandbook } from './PortalViews'
 import { SchemeOfWorkView } from '@/components/dashboard/StudentDashboard'
 import { PageType, RoleType } from './portalTypes'
 import { useAuthStoreMounted } from '@/lib/auth-store'
@@ -19,6 +19,7 @@ const PAGE_TITLES: Record<PageType, string> = {
   notifications: 'Notifications',
   projects: 'Assignments/Projects',
   scheme: 'Scheme of Work',
+  policy: 'School Policy & Student Handbook',
 }
 
 export default function PortalPage() {
@@ -37,9 +38,12 @@ export default function PortalPage() {
 
   useEffect(() => {
     const pageParam = searchParams.get('page')
-    if (pageParam === 'notifications') {
-      setRole('parent')
-      setPage('notifications')
+    if (pageParam && Object.prototype.hasOwnProperty.call(PAGE_TITLES, pageParam)) {
+      const nextPage = pageParam as PageType
+      if (nextPage === 'notifications' || nextPage === 'switch') {
+        setRole('parent')
+      }
+      setPage(nextPage)
     }
   }, [searchParams])
 
@@ -58,11 +62,13 @@ export default function PortalPage() {
       case 'switch':
         return <ParentSwitch activeChild={activeChild} setActiveChild={setActiveChild} />
       case 'notifications':
-        return <ParentNotifications selectedNotificationId={selectedNotificationId} />
+        return <ParentNotifications selectedNotificationId={selectedNotificationId} baseHref="/portal?page=notifications" />
       case 'projects':
         return <StudentProjects />
       case 'scheme':
         return <SchemeOfWorkView />
+      case 'policy':
+        return <SchoolPolicyHandbook role={role} />
       default:
         return <Dashboard role={role} />
     }
@@ -79,7 +85,14 @@ export default function PortalPage() {
             userEmail={portalUser.email}
             userRole={portalUser.role}
             settingsHref="/portal"
-            getNotificationHref={(notificationId) => `/portal?page=notifications&notification=${notificationId}`}
+            getNotificationHref={(notificationId) => {
+              const notificationMap: Record<number, string> = {
+                1: 'fee-balance-reminder',
+                2: 'result-published',
+                3: 'attendance-alert',
+              }
+              return `/portal?page=notifications&notification=${notificationMap[notificationId] ?? notificationId}`
+            }}
           />
 
           <main style={{ flex: 1, padding: '28px 26px 32px' }}>
