@@ -66,6 +66,10 @@ export const dashboardApi = {
   getQuickStats: () => api.get('/dashboard/stats'),
 }
 
+//PAYROLL
+export const payrollApi = {
+  getMyPayslips: () => api.get('/payroll/my-payslips'),
+}
 
 // STAFF
 export const staffApi = {

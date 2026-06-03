@@ -1,12 +1,12 @@
 'use client'
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import toast from 'react-hot-toast'
-import { teacherApi, attendanceApi } from '@/lib/api'
-import { Upload, Clock } from 'lucide-react'
+import { Upload, Clock, Download } from 'lucide-react'
 import { PageHeader, StudentAvatar } from '../_components'
+import { teacherApi, attendanceApi } from '@/lib/api'
 import { MOCK_PERIODS } from '../_mock-data'
 import type { AttendanceStatus, AttendanceMode } from '../_types'
+import toast from 'react-hot-toast'
 
 const statusColors: Record<AttendanceStatus, { bg: string; text: string; active: string }> = {
   P: { bg: '#ECFDF5', text: '#065F46', active: '#10B981' },
@@ -15,50 +15,77 @@ const statusColors: Record<AttendanceStatus, { bg: string; text: string; active:
   H: { bg: '#F3F4F6', text: '#4B5563', active: '#9CA3AF' },
 }
 
+// ── CSV helpers (kept from original) ──────────────────────────────────────
+
+const escapeCsv = (value: unknown) => {
+  const raw = (value ?? '').toString()
+  if (/[",\n\r]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`
+  return raw
+}
+
+const parseCsvLine = (line: string) => {
+  const out: string[] = []
+  let cur = '', inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { cur += '"'; i++; continue }
+      inQuotes = !inQuotes; continue
+    }
+    if (ch === ',' && !inQuotes) { out.push(cur); cur = ''; continue }
+    cur += ch
+  }
+  out.push(cur)
+  return out.map(v => v.trim())
+}
+
+const parseCsv = (text: string) => {
+  const normalized = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const lines = normalized.split('\n').filter(l => l.trim().length > 0)
+  if (!lines.length) return { headers: [] as string[], rows: [] as string[][] }
+  return { headers: parseCsvLine(lines[0]).map(h => h.trim()), rows: lines.slice(1).map(parseCsvLine) }
+}
+
 export default function AttendanceSection() {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [mode, setMode]                   = useState<AttendanceMode>('daily')
-  const [selectedGroup, setSelectedGroup] = useState<string>('')   // real section ID
-  const [selectedPeriod, setSelectedPeriod] = useState(MOCK_PERIODS[0].id)
-  const [date, setDate]                   = useState(new Date().toISOString().split('T')[0])
-  const [attendance, setAttendance]       = useState<Record<string, AttendanceStatus>>({})
-  const [periodAttendance, setPeriodAttendance] = useState<Record<string, AttendanceStatus>>({})
-  const [saved, setSaved]                 = useState(false)
 
-  // ── Fetch teacher's groups to populate dropdown ──────────────────────────
+  const [mode,           setMode]           = useState<AttendanceMode>('daily')
+  const [selectedGroup,  setSelectedGroup]  = useState<string>('')  // real section ID
+  const [selectedPeriod, setSelectedPeriod] = useState(MOCK_PERIODS[0].id)
+  const [date,           setDate]           = useState(new Date().toISOString().split('T')[0])
+  const [attendance,     setAttendance]     = useState<Record<string, AttendanceStatus>>({})
+  const [periodAttendance, setPeriodAttendance] = useState<Record<string, AttendanceStatus>>({})
+  const [saved,          setSaved]          = useState(false)
+
+  // ── Fetch real groups ──────────────────────────────────────────────────────
   const { data: groups = [] } = useQuery({
     queryKey: ['teacher-groups'],
     queryFn:  () => teacherApi.getGroups().then(r => r.data),
   })
 
-  // Set first group as default once groups load
+  // Set default group once loaded
   useEffect(() => {
-    if (groups.length > 0 && !selectedGroup) {
-      setSelectedGroup(groups[0].id)
-    }
+    if (groups.length > 0 && !selectedGroup) setSelectedGroup(groups[0].id)
   }, [groups, selectedGroup])
 
-  // ── Fetch students for selected group + date ─────────────────────────────
+  // ── Fetch real students for selected group + date ─────────────────────────
   const { data: students = [] } = useQuery({
     queryKey: ['attendance-students', selectedGroup, date],
     queryFn:  () => attendanceApi.getStudents({ section_id: selectedGroup, date }).then(r => r.data),
     enabled:  !!selectedGroup,
   })
 
-  // When students load, initialise attendance state from their existing status
+  // Initialise attendance state when students load
   useEffect(() => {
-    if (students.length > 0) {
-      setAttendance(Object.fromEntries(students.map((s: any) => [s.id, s.status as AttendanceStatus ?? 'P']))
-      )
-      const initial: Record<string, AttendanceStatus> = {}
-      students.forEach((s: any) => {
-        MOCK_PERIODS.forEach(p => { initial[`${s.id}-${p.id}`] = 'P' })
-      })
-      setPeriodAttendance(initial)
-    }
+    if (students.length === 0) return
+    setAttendance(Object.fromEntries(students.map((s: any) => [s.id, (s.status ?? 'P') as AttendanceStatus])))
+    const initial: Record<string, AttendanceStatus> = {}
+    students.forEach((s: any) => { MOCK_PERIODS.forEach(p => { initial[`${s.id}-${p.id}`] = 'P' }) })
+    setPeriodAttendance(initial)
+    setSaved(false)
   }, [students])
 
-  // ── Save attendance mutation ──────────────────────────────────────────────
+  // ── Save mutation ─────────────────────────────────────────────────────────
   const saveMutation = useMutation({
     mutationFn: () => attendanceApi.saveAttendance({
       section_id: selectedGroup,
@@ -69,20 +96,16 @@ export default function AttendanceSection() {
     onError:   () => toast.error('Failed to save attendance.'),
   })
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // ── Status helpers ────────────────────────────────────────────────────────
   const setStatus = (id: string, s: AttendanceStatus) => {
-    if (mode === 'daily') {
-      setAttendance(prev => ({ ...prev, [id]: s }))
-    } else {
-      setPeriodAttendance(prev => ({ ...prev, [`${id}-${selectedPeriod}`]: s }))
-    }
+    if (mode === 'daily') setAttendance(prev => ({ ...prev, [id]: s }))
+    else setPeriodAttendance(prev => ({ ...prev, [`${id}-${selectedPeriod}`]: s }))
     setSaved(false)
   }
 
   const markAll = (s: AttendanceStatus) => {
-    if (mode === 'daily') {
-      setAttendance(Object.fromEntries(students.map((st: any) => [st.id, s])))
-    } else {
+    if (mode === 'daily') setAttendance(Object.fromEntries(students.map((st: any) => [st.id, s])))
+    else {
       const updated = { ...periodAttendance }
       students.forEach((st: any) => { updated[`${st.id}-${selectedPeriod}`] = s })
       setPeriodAttendance(updated)
@@ -90,52 +113,98 @@ export default function AttendanceSection() {
     setSaved(false)
   }
 
-  const resetAttendance = () => {
-    if (mode === 'daily') {
-      setAttendance(Object.fromEntries(students.map((s: any) => [s.id, 'P' as AttendanceStatus])))
-    } else {
-      const reset: Record<string, AttendanceStatus> = {}
-      students.forEach((s: any) => {
-        MOCK_PERIODS.forEach(p => { reset[`${s.id}-${p.id}`] = 'P' })
-      })
-      setPeriodAttendance(reset)
-    }
-    setSaved(false)
-  }
+  const getStudentStatus = (studentId: string): AttendanceStatus =>
+    mode === 'daily' ? (attendance[studentId] ?? 'P') : (periodAttendance[`${studentId}-${selectedPeriod}`] ?? 'P')
 
-  const getStudentStatus = (studentId: string): AttendanceStatus => {
-    if (mode === 'daily') return attendance[studentId] ?? 'P'
-    return periodAttendance[`${studentId}-${selectedPeriod}`] ?? 'P'
-  }
-
+  // ── CSV upload (kept from original) ──────────────────────────────────────
   const handleCsvUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      if (!file.name.endsWith('.csv')) { alert('Please upload a .csv file'); return }
-      alert(`CSV "${file.name}" uploaded!`)
+    if (!file) return
+    if (file.name.toLowerCase().endsWith('.xlsx') || file.type.includes('spreadsheetml')) {
+      toast.error('Please export the Excel file as CSV first.'); e.target.value = ''; return
     }
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      toast.error('Please upload a .csv file.'); e.target.value = ''; return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const { headers, rows } = parseCsv(typeof reader.result === 'string' ? reader.result : '')
+        if (!headers.length) { toast.error('CSV is empty.'); return }
+
+        const idIdx     = headers.findIndex(h => /student\s*id/i.test(h) || /^id$/i.test(h))
+        const statusIdx = headers.findIndex(h => /^status/i.test(h))
+
+        if (idIdx === -1 || statusIdx === -1) {
+          toast.error('CSV must contain "Student ID" and "Status" columns.'); return
+        }
+
+        const allowed: AttendanceStatus[] = ['P', 'A', 'L', 'H']
+        const currentIds = new Set(students.map((s: any) => s.id))
+        let updated = 0, skipped = 0
+
+        if (mode === 'daily') {
+          setAttendance(prev => {
+            const next = { ...prev }
+            for (const r of rows) {
+              const id = (r[idIdx] ?? '').trim()
+              const st = (r[statusIdx] ?? '').trim().toUpperCase() as AttendanceStatus
+              if (!id || !currentIds.has(id) || !allowed.includes(st)) { skipped++; continue }
+              next[id] = st; updated++
+            }
+            return next
+          })
+        } else {
+          setPeriodAttendance(prev => {
+            const next = { ...prev }
+            for (const r of rows) {
+              const id = (r[idIdx] ?? '').trim()
+              const st = (r[statusIdx] ?? '').trim().toUpperCase() as AttendanceStatus
+              if (!id || !currentIds.has(id) || !allowed.includes(st)) { skipped++; continue }
+              next[`${id}-${selectedPeriod}`] = st; updated++
+            }
+            return next
+          })
+        }
+        setSaved(false)
+        toast.success(`Imported: ${updated} updated${skipped ? `, ${skipped} skipped` : ''}.`)
+      } catch { toast.error('Could not read this CSV file.') }
+    }
+    reader.onerror = () => toast.error('Could not read this file.')
+    reader.readAsText(file)
     e.target.value = ''
   }
 
-  // ── Counts from real students ─────────────────────────────────────────────
+  // ── CSV download template ─────────────────────────────────────────────────
+  const downloadTemplate = () => {
+    const groupName = groups.find((g: any) => g.id === selectedGroup)?.name ?? selectedGroup
+    const headers   = ['Student ID', 'Student Name', 'Group', 'Date', 'Mode', 'Status (P/A/L/H)', 'Remarks']
+    const rows      = students.map((s: any) => [s.id, s.name, groupName, date, mode, '', ''])
+    const csv       = ['\uFEFF' + headers.map(escapeCsv).join(','), ...rows.map(r => r.map(escapeCsv).join(','))].join('\n')
+    const a         = Object.assign(document.createElement('a'), {
+      href:     URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })),
+      download: `attendance_${groupName.replace(/\s+/g, '_')}_${date}.csv`,
+    })
+    document.body.appendChild(a); a.click(); a.remove()
+  }
+
+  // ── Summary counts ────────────────────────────────────────────────────────
   const counts = { P: 0, A: 0, L: 0, H: 0 }
   students.forEach((s: any) => {
-    const status = getStudentStatus(s.id)
-    if (status in counts) counts[status as AttendanceStatus]++
+    const st = getStudentStatus(s.id)
+    if (st in counts) counts[st as AttendanceStatus]++
   })
   const total      = students.length
   const presentPct = total ? Math.round((counts.P / total) * 100) : 0
 
   const getPeriodSummary = (periodId: string) => {
     let present = 0
-    students.forEach((s: any) => {
-      if (periodAttendance[`${s.id}-${periodId}`] === 'P') present++
-    })
+    students.forEach((s: any) => { if (periodAttendance[`${s.id}-${periodId}`] === 'P') present++ })
     return { present, total }
   }
 
-  // ── Current group label ───────────────────────────────────────────────────
   const currentGroupName = groups.find((g: any) => g.id === selectedGroup)?.name ?? '—'
+  const currentSubject   = groups.find((g: any) => g.id === selectedGroup)?.subject ?? '—'
 
   return (
     <div>
@@ -160,43 +229,26 @@ export default function AttendanceSection() {
 
           {/* Filters */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {/* Class / Group — real data from DB */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Class / Group</label>
               <select value={selectedGroup} onChange={e => { setSelectedGroup(e.target.value); setSaved(false) }} className="select">
                 {groups.length === 0 && <option value="">Loading...</option>}
-                {groups.map((g: any) => (
-                  <option key={g.id} value={g.id}>{g.name}</option>
-                ))}
+                {groups.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
             </div>
-
-            {/* Subject — from selected group */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Subject</label>
-              <select className="select">
-                {groups
-                  .filter((g: any) => g.id === selectedGroup)
-                  .map((g: any) => (
-                    <option key={g.id}>{g.subject}</option>
-                  ))}
-              </select>
+              <input value={currentSubject} readOnly className="input" style={{ background: '#F7F6F3' }} />
             </div>
-
-            {/* Date */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Date</label>
               <input type="date" value={date} onChange={e => { setDate(e.target.value); setSaved(false) }} className="input" />
             </div>
-
-            {/* Period selector (period mode only) */}
             {mode === 'period' && (
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Period</label>
                 <select value={selectedPeriod} onChange={e => setSelectedPeriod(e.target.value)} className="select">
-                  {MOCK_PERIODS.map(p => (
-                    <option key={p.id} value={p.id}>Period {p.number} ({p.time})</option>
-                  ))}
+                  {MOCK_PERIODS.map(p => <option key={p.id} value={p.id}>Period {p.number} ({p.time})</option>)}
                 </select>
               </div>
             )}
@@ -253,7 +305,7 @@ export default function AttendanceSection() {
                 <tbody>
                   {students.length === 0 && (
                     <tr><td colSpan={3} className="text-center py-8 text-sm" style={{ color: '#6B6660' }}>
-                      {selectedGroup ? 'Loading students...' : 'Select a class to load students'}
+                      {selectedGroup ? 'Loading students...' : 'Select a class'}
                     </td></tr>
                   )}
                   {students.map((st: any) => {
@@ -270,7 +322,7 @@ export default function AttendanceSection() {
                         <td>
                           <div className="flex gap-1">
                             {(['P', 'A', 'L', 'H'] as AttendanceStatus[]).map(s => {
-                              const c        = statusColors[s]
+                              const c = statusColors[s]
                               const isActive = cur === s
                               return (
                                 <button key={s} onClick={() => setStatus(st.id, s)}
@@ -310,14 +362,8 @@ export default function AttendanceSection() {
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3 text-center">
-                <div className="rounded-lg p-2" style={{ background: '#F7F6F3' }}>
-                  <p className="text-xl font-bold">{total}</p>
-                  <p className="text-xs" style={{ color: '#6B6660' }}>Total</p>
-                </div>
-                <div className="rounded-lg p-2" style={{ background: '#F7F6F3' }}>
-                  <p className="text-xl font-bold" style={{ color: '#C9A020' }}>{counts.P}</p>
-                  <p className="text-xs" style={{ color: '#6B6660' }}>Present</p>
-                </div>
+                <div className="rounded-lg p-2" style={{ background: '#F7F6F3' }}><p className="text-xl font-bold">{total}</p><p className="text-xs" style={{ color: '#6B6660' }}>Total</p></div>
+                <div className="rounded-lg p-2" style={{ background: '#F7F6F3' }}><p className="text-xl font-bold" style={{ color: '#C9A020' }}>{counts.P}</p><p className="text-xs" style={{ color: '#6B6660' }}>Present</p></div>
               </div>
             </div>
 
@@ -330,10 +376,7 @@ export default function AttendanceSection() {
                 { label: 'Holiday', key: 'H' as AttendanceStatus, color: '#9CA3AF' },
               ]).map(({ label, key, color }) => (
                 <div key={key} className="flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: '#E4E1D8' }}>
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
-                    <span className="text-sm">{label}</span>
-                  </div>
+                  <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full" style={{ background: color }} /><span className="text-sm">{label}</span></div>
                   <span className="font-semibold text-sm">{counts[key]}</span>
                 </div>
               ))}
@@ -344,14 +387,18 @@ export default function AttendanceSection() {
         {/* Action Bar */}
         <div className="flex justify-end gap-3 pt-2">
           <input ref={fileInputRef} type="file" accept=".csv" onChange={handleCsvUpload} className="hidden" />
-          <button onClick={() => fileInputRef.current?.click()} className="btn-outline flex items-center gap-1.5">
-            <Upload size={14} /> Upload CSV
-          </button>
-          <button onClick={resetAttendance} className="btn-outline">Reset</button>
-          <button
-            onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending || students.length === 0}
-            className="btn-gold">
+          <button onClick={downloadTemplate} className="btn-outline flex items-center gap-1.5"><Download size={14} /> Download Template</button>
+          <button onClick={() => fileInputRef.current?.click()} className="btn-outline flex items-center gap-1.5"><Upload size={14} /> Upload CSV</button>
+          <button onClick={() => {
+            if (mode === 'daily') setAttendance(Object.fromEntries(students.map((s: any) => [s.id, 'P' as AttendanceStatus])))
+            else {
+              const reset: Record<string, AttendanceStatus> = {}
+              students.forEach((s: any) => { MOCK_PERIODS.forEach(p => { reset[`${s.id}-${p.id}`] = 'P' }) })
+              setPeriodAttendance(reset)
+            }
+            setSaved(false)
+          }} className="btn-outline">Reset</button>
+          <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || students.length === 0} className="btn-gold">
             {saveMutation.isPending ? 'Saving…' : saved ? '✓ Saved' : '💾 Save Attendance'}
           </button>
         </div>

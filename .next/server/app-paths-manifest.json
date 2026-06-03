@@ -1,7 +1,8 @@
 {
+  "/admin/payroll/page": "app/admin/payroll/page.js",
   "/staff/page": "app/staff/page.js",
-  "/students/page": "app/students/page.js",
-  "/messaging/page": "app/messaging/page.js",
+  "/login/page": "app/login/page.js",
+  "/attendance/page": "app/attendance/page.js",
   "/portal/page": "app/portal/page.js",
   "/instructor-dashboard/page": "app/instructor-dashboard/page.js"
 }
