@@ -64,7 +64,105 @@ export default function InstructorDashboardPage() {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-2 space-y-0.5">
-          {sidebarItems.map(({ id, label, icon: Icon }) => {
+          {sidebarItems.slice(0, 3).map(({ id, label, icon: Icon }) => {
+            const active = activeSection === id
+            return (
+              <button key={id} onClick={() => setActiveSection(id)}
+                className="flex items-center gap-3 w-full px-4 py-3 mx-2 rounded-lg text-sm transition-all text-left"
+                onMouseEnter={(event) => {
+                  event.currentTarget.style.color = '#C9A020'
+                  if (!active) {
+                    event.currentTarget.style.background = 'rgba(255,255,255,0.08)'
+                  }
+                }}
+                onMouseLeave={(event) => {
+                  event.currentTarget.style.color = active ? '#C9A020' : '#FFFFFF'
+                  event.currentTarget.style.background = active ? 'rgba(201,160,32,0.15)' : 'transparent'
+                }}
+                style={{
+                  width: 'calc(100% - 16px)',
+                  color: active ? '#C9A020' : '#FFFFFF',
+                  background: active ? 'rgba(201,160,32,0.15)' : 'transparent',
+                  border: active ? '1px solid rgba(201,160,32,0.30)' : '1px solid transparent',
+                }}>
+                <Icon size={16} />
+                <span>{label}</span>
+              </button>
+            )
+          })}
+
+          {/* Assessment dropdown */}
+          <div className="mx-2">
+            <button
+              type="button"
+              onClick={() => setAssessmentOpen((v) => !v)}
+              className="flex items-center gap-3 w-full px-4 py-3 rounded-lg text-sm transition-all text-left"
+              onMouseEnter={(event) => {
+                event.currentTarget.style.color = '#C9A020'
+                if (!isAssessmentActive) {
+                  event.currentTarget.style.background = 'rgba(255,255,255,0.08)'
+                }
+              }}
+              onMouseLeave={(event) => {
+                event.currentTarget.style.color = isAssessmentActive ? '#C9A020' : '#FFFFFF'
+                event.currentTarget.style.background = isAssessmentActive ? 'rgba(201,160,32,0.15)' : 'transparent'
+              }}
+              style={{
+                width: 'calc(100% - 0px)',
+                color: isAssessmentActive ? '#C9A020' : '#FFFFFF',
+                background: isAssessmentActive ? 'rgba(201,160,32,0.15)' : 'transparent',
+                border: isAssessmentActive ? '1px solid rgba(201,160,32,0.30)' : '1px solid transparent',
+              }}
+            >
+              <FileText size={16} />
+              <span className="flex-1">Assessment</span>
+              <span style={{ transform: assessmentOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease', opacity: 0.8 }}>
+                ▶
+              </span>
+            </button>
+
+            {assessmentOpen ? (
+              <div className="mt-1 space-y-0.5">
+                {[
+                  { id: 'assessment-input' as const, label: 'Input Score' },
+                  { id: 'assessment-view' as const, label: 'View Score' },
+                ].map((item) => {
+                  const active = activeSection === item.id
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setActiveSection(item.id)}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 rounded-lg text-sm transition-all text-left"
+                      onMouseEnter={(event) => {
+                        event.currentTarget.style.color = '#C9A020'
+                        if (!active) {
+                          event.currentTarget.style.background = 'rgba(255,255,255,0.08)'
+                        }
+                      }}
+                      onMouseLeave={(event) => {
+                        event.currentTarget.style.color = active ? '#C9A020' : '#FFFFFF'
+                        event.currentTarget.style.background = active ? 'rgba(201,160,32,0.15)' : 'transparent'
+                      }}
+                      style={{
+                        marginLeft: 12,
+                        width: 'calc(100% - 12px)',
+                        color: active ? '#C9A020' : '#FFFFFF',
+                        background: active ? 'rgba(201,160,32,0.15)' : 'transparent',
+                        border: active ? '1px solid rgba(201,160,32,0.30)' : '1px solid transparent',
+                        opacity: 0.95,
+                      }}
+                    >
+                      <span style={{ width: 6, height: 6, borderRadius: 999, background: active ? '#C9A020' : 'rgba(255,255,255,0.35)' }} />
+                      <span>{item.label}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            ) : null}
+          </div>
+
+          {sidebarItems.slice(3).map(({ id, label, icon: Icon }) => {
             const active = activeSection === id
             return (
               <button

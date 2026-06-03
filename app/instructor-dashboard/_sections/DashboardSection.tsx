@@ -102,7 +102,7 @@ export default function DashboardSection({ onNavigate }: Props) {
             <div className="card animate-in stagger-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-base">Upcoming Assessments</h3>
-                <button onClick={() => onNavigate('assessment')} className="text-xs font-medium" style={{ color: '#C9A020' }}>View All</button>
+                <button onClick={() => onNavigate('assessment-input')} className="text-xs font-medium" style={{ color: '#C9A020' }}>View All</button>
               </div>
               <div className="space-y-3">
                 {MOCK_UPCOMING_ASSESSMENTS.map(item => (
