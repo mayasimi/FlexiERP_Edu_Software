@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Bell, BookOpen, ChevronDown, LogOut, Settings } from 'lucide-react'
-import { useAuthStoreMounted } from '@/lib/auth-store'
+import { useAuthStore } from '@/lib/auth-store'
 import { getInitials } from '@/lib/utils'
 
 const GOLD   = '#C9A020'

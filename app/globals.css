@@ -1,9 +1,9 @@
+/* ── Brand Fonts ── */
+@import url('https://fonts.cdnfonts.com/css/palatino-linotype');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* ── Brand Fonts ── */
-@import url('https://fonts.cdnfonts.com/css/palatino-linotype');
 
 :root {
   --gold: #C9A020;

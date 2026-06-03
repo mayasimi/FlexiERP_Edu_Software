@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Image from 'next/image'
 import {
   LayoutDashboard, ClipboardCheck, CalendarDays, FileText,
-  Users, BarChart3, LogOut, BookOpen, MessageCircle
+  Users, BarChart3, LogOut, BookOpen, MessageCircle, WalletCards
 } from 'lucide-react'
 import { useAuthStoreMounted } from '@/lib/auth-store'
 import type { Section } from './_types'
@@ -16,6 +16,7 @@ import GroupsSection       from './_sections/GroupsSection'
 import PerformanceSection  from './_sections/PerformanceSection'
 import LessonPlanSection   from './_sections/LessonPlanSection'
 import MessagesSection     from './_sections/MessagesSection'
+import PayrollSection      from './_sections/PayrollSection'
 import Navbar from '@/components/layout/Navbar'
 
 const sidebarItems: { id: Section; label: string; icon: typeof LayoutDashboard }[] = [
@@ -27,6 +28,7 @@ const sidebarItems: { id: Section; label: string; icon: typeof LayoutDashboard }
   { id: 'groups',       label: 'Student Groups',   icon: Users           },
   { id: 'performance',  label: 'Class Performance',icon: BarChart3       },
   { id: 'messages',     label: 'Messages',         icon: MessageCircle   },
+  { id: 'payroll',      label: 'My Payroll',       icon: WalletCards     },
 ]
 
 export default function InstructorDashboardPage() {
@@ -141,6 +143,7 @@ export default function InstructorDashboardPage() {
         {activeSection === 'groups'       && <GroupsSection      />}
         {activeSection === 'performance'  && <PerformanceSection />}
         {activeSection === 'messages'     && <MessagesSection    />}
+        {activeSection === 'payroll'      && <PayrollSection     />}
       </div>
     </div>
   )

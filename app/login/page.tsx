@@ -33,29 +33,22 @@ export default function LoginPage() {
         localStorage.removeItem('edu_remember_email')
       }
       toast.success('Welcome back!')
+
+      const currentRole = useAuthStore.getState().role
+
+      if (currentRole === 'parent' || currentRole === 'student') {
+        window.location.href = '/portal'
+      } else if (currentRole === 'teacher') {
+        window.location.href = '/instructor-dashboard'
+      } else {
+        window.location.href = '/dashboard'
+      }
     } catch (err: any) {
       const message = err?.response?.data?.message ?? 'Invalid credentials. Please try again.'
       setError(message)
       toast.error(message)
     }
-
-    toast.success('Welcome back!')
-
-    // Read role AFTER login completes
-    const currentRole = useAuthStore.getState().role
-
-  if (currentRole === 'parent' || currentRole === 'student') {
-      window.location.href = '/portal'
-    } else if (currentRole === 'teacher') {
-      window.location.href = '/instructor-dashboard'
-    } else {
-      window.location.href = '/dashboard'
   }
-
-  } catch {
-    toast.error('Invalid credentials. Please try again.')
-  }
-}
 
   return (
     <div className="min-h-screen flex flex-col"

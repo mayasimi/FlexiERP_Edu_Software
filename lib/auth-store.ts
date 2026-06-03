@@ -46,7 +46,14 @@ const USER_KEY  = 'flexi_user'
 const ROLE_KEY  = 'edu_user_role'
 
 const VALID_ROLES = ['admin', 'staff', 'teacher', 'parent', 'student'] as const
+const BYPASS_AUTH = process.env.NEXT_PUBLIC_BYPASS_AUTH === 'true'
 
+const BYPASS_USER: User = {
+  id: 0,
+  name: 'Demo Admin',
+  email: 'demo@flexierp.local',
+  role: 'admin',
+}
 
 
 function saveToken(token: string) {
@@ -145,10 +152,10 @@ async function apiCall<T>(
 
 export const useAuthStore = create<AuthState>(() => ({
   // Restore state from localStorage on store initialisation
-  user:            getStoredUser(),
-  role:            getStoredRole(),
-  token:           getToken(),
-  isAuthenticated: !!getToken(),
+  user:            BYPASS_AUTH ? BYPASS_USER : getStoredUser(),
+  role:            BYPASS_AUTH ? BYPASS_USER.role : getStoredRole(),
+  token:           BYPASS_AUTH ? 'auth-bypass-token' : getToken(),
+  isAuthenticated: BYPASS_AUTH || !!getToken(),
   isLoading:       false,
 
   setRole: (role) => {
@@ -159,6 +166,17 @@ export const useAuthStore = create<AuthState>(() => ({
   login: async (email: string, password: string) => {
 
     useAuthStore.setState({ isLoading: true })
+
+    if (BYPASS_AUTH) {
+      useAuthStore.setState({
+        token: 'auth-bypass-token',
+        user: BYPASS_USER,
+        role: BYPASS_USER.role,
+        isAuthenticated: true,
+        isLoading: false,
+      })
+      return
+    }
 
     try {
       const res = await apiCall<{ user: User; token: string }>('/auth/login', {
@@ -188,6 +206,17 @@ export const useAuthStore = create<AuthState>(() => ({
   },
 
   logout: async () => {
+    if (BYPASS_AUTH) {
+      useAuthStore.setState({
+        token: 'auth-bypass-token',
+        user: BYPASS_USER,
+        role: BYPASS_USER.role,
+        isAuthenticated: true,
+      })
+      window.location.href = '/dashboard'
+      return
+    }
+
     const token = getToken()
     if (token) {
       await apiCall('/auth/logout', { method: 'POST', token }).catch(() => {})
@@ -203,6 +232,16 @@ export const useAuthStore = create<AuthState>(() => ({
   },
 
   fetchMe: async () => {
+    if (BYPASS_AUTH) {
+      useAuthStore.setState({
+        token: 'auth-bypass-token',
+        user: BYPASS_USER,
+        role: BYPASS_USER.role,
+        isAuthenticated: true,
+      })
+      return
+    }
+
     const token = getToken()
     if (!token) return
 
