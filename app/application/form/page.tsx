@@ -1,12 +1,17 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
 import toast from 'react-hot-toast'
 import { ChevronLeft, Upload } from 'lucide-react'
 
-export default function ApplicationForm() {
+function ApplicationFormInner() {
   const [submitting, setSubmitting] = useState(false)
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const backTo = searchParams.get('from') || '/application'
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -15,9 +20,39 @@ export default function ApplicationForm() {
       const formData = new FormData(e.currentTarget)
       const firstName = (formData.get('firstName') ?? '').toString().trim()
       const lastName = (formData.get('lastName') ?? '').toString().trim()
+      const program = (formData.get('program') ?? '').toString().trim()
+      const studentName = `${firstName} ${lastName}`.trim()
 
       await new Promise(resolve => setTimeout(resolve, 1500))
-      toast.success(`Application submitted${firstName || lastName ? ` for ${firstName} ${lastName}` : ''}!`)
+      const now = new Date()
+      const yyyy = now.getFullYear()
+      const yy = String(yyyy).slice(-2)
+      const seq = String(now.getTime()).slice(-4)
+      const id = `APP-${yy}-${seq}`
+      const dateApplied = now.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+      const submission = {
+        id,
+        student_name: studentName || 'New Applicant',
+        program: program || '—',
+        date_applied: dateApplied,
+        status: 'Pending Review',
+      }
+
+      if (typeof window !== 'undefined') {
+        const storageKey = 'edu_admission_applications'
+        const raw = localStorage.getItem(storageKey)
+        const existing = raw ? (JSON.parse(raw) as unknown[]) : []
+        const next = [submission, ...existing]
+        localStorage.setItem(storageKey, JSON.stringify(next))
+      }
+
+      toast.success(`Application submitted${studentName ? ` for ${studentName}` : ''}!`)
+
+      if (backTo.startsWith('/admission')) {
+        router.push(backTo)
+        return
+      }
+
       e.currentTarget.reset()
     } catch (err) {
       toast.error('Failed to submit application. Please try again.')
@@ -35,7 +70,7 @@ export default function ApplicationForm() {
       </div>
 
       <div className="px-6 pb-8">
-        <Link href="/application" className="inline-flex items-center gap-2 text-sm font-medium mb-6 hover:translate-x-[-4px] transition-transform" style={{ color: '#C9A020' }}>
+        <Link href={backTo} className="inline-flex items-center gap-2 text-sm font-medium mb-6 hover:translate-x-[-4px] transition-transform" style={{ color: '#C9A020' }}>
           <ChevronLeft size={16} />
           Back
         </Link>
@@ -148,7 +183,7 @@ export default function ApplicationForm() {
             </div>
 
             <div className="flex justify-end gap-3 pt-6 border-t" style={{ borderColor: '#E4E1D8' }}>
-              <Link href="/application">
+              <Link href={backTo}>
                 <button type="button" className="btn-outline px-8">Cancel</button>
               </Link>
               <button type="submit" disabled={submitting} className="btn-gold px-12">
@@ -159,5 +194,13 @@ export default function ApplicationForm() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function ApplicationFormPage() {
+  return (
+    <Suspense fallback={<div style={{ display: 'grid', placeItems: 'center', minHeight: '100vh' }}><p>Loading...</p></div>}>
+      <ApplicationFormInner />
+    </Suspense>
   )
 }

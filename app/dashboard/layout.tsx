@@ -6,7 +6,7 @@ import { useAuthStore } from '@/lib/auth-store'
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthStore()
   const router = useRouter()
-  const allowUnauthenticated = process.env.NEXT_PUBLIC_AUTH_BYPASS === 'true'
+  const allowUnauthenticated = ['1', 'true', 'yes'].includes((process.env.NEXT_PUBLIC_AUTH_BYPASS ?? '').toLowerCase())
 
   useEffect(() => {
     if (!allowUnauthenticated && !isLoading && !isAuthenticated) {

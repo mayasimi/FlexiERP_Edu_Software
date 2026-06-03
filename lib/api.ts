@@ -28,7 +28,7 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 api.interceptors.response.use(
   (res: AxiosResponse) => res,
   (error) => {
-    const authBypassEnabled = process.env.NEXT_PUBLIC_AUTH_BYPASS === 'true'
+    const authBypassEnabled = ['1', 'true', 'yes'].includes((process.env.NEXT_PUBLIC_AUTH_BYPASS ?? '').toLowerCase())
     if (error.response?.status === 401 && typeof window !== 'undefined' && !authBypassEnabled) {
       sessionStorage.removeItem('edu_token')
       window.location.href = '/login'
@@ -125,7 +125,7 @@ export const attendanceApi = {
     section_id: string
     subject_id: string
     date: string
-    attendance: Array<{ student_id: string; status: 'P' | 'A' | 'L' | 'H' }>
+    attendance: Array<{ student_id: string; status: 'P' | 'A' | 'L' | 'S' }>
   }) => api.post('/attendance/save', data),
   getSummary: (params: { class_id: string; section_id: string; date: string }) =>
     api.get('/attendance/summary', { params }),
