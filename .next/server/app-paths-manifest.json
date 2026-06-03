@@ -1,7 +1,7 @@
 {
-  "/login/page": "app/login/page.js",
-  "/timetable/page": "app/timetable/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
+  "/staff/page": "app/staff/page.js",
+  "/students/page": "app/students/page.js",
+  "/messaging/page": "app/messaging/page.js",
   "/portal/page": "app/portal/page.js",
   "/instructor-dashboard/page": "app/instructor-dashboard/page.js"
 }

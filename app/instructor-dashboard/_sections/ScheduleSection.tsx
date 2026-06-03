@@ -1,5 +1,7 @@
 'use client'
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { teacherApi } from '@/lib/api'
 import { Users, MapPin, ChevronLeft, ChevronRight } from 'lucide-react'
 import { PageHeader } from '../_components'
 import { MOCK_WEEKLY_SCHEDULE } from '../_mock-data'
@@ -15,7 +17,13 @@ export default function ScheduleSection() {
     return DAYS.includes(today) ? today : 'Monday'
   })
 
-  const daySchedule = MOCK_WEEKLY_SCHEDULE[activeDay] || []
+  const { data: weeklySchedule } = useQuery({
+    queryKey: ['teacher-schedule'],
+    queryFn: () => teacherApi.getSchedule().then(r => r.data),
+    placeholderData: {},
+  })
+
+  const daySchedule = weeklySchedule[activeDay] ?? []
   const classCount = daySchedule.filter(isClassEntry).length
   const freeCount = daySchedule.filter(e => !isClassEntry(e) && e.type === 'free').length
 

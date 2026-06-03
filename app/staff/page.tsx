@@ -5,36 +5,30 @@ import AppLayout from '@/components/layout/AppLayout'
 import Topbar from '@/components/layout/Topbar'
 import { staffApi } from '@/lib/api'
 import { getInitials } from '@/lib/utils'
-import { Users, UserCheck, UserX, LayoutGrid, List, Eye, Pencil, Plus } from 'lucide-react'
-
-const MOCK_STAFF = {
-  total: 142, active: 138, on_leave: 4,
-  members: [
-    { id: '1', name: 'Dr. Sarah Jenkins', role: 'Head of Mathematics', department: 'Mathematics Dept.', email: 's.jenkins@edumanage.edu', status: 'Active', avatar: null },
-    { id: '2', name: 'Prof. Robert Chen', role: 'Senior Lecturer', department: 'Physics Dept.', email: 'r.chen@edumanage.edu', status: 'Active', avatar: null },
-    { id: '3', name: 'Elena Rostova', role: 'Academic Coordinator', department: 'Administration', email: 'e.rostova@edumanage.edu', status: 'On Leave', avatar: null },
-    { id: '4', name: 'David Kim', role: 'Adjunct Professor', department: 'Humanities Dept.', email: 'd.kim@edumanage.edu', status: 'Active', avatar: null },
-    { id: '5', name: 'Prof. Alan Smith', role: 'Senior Lecturer', department: 'English Dept.', email: 'a.smith@edumanage.edu', status: 'Active', avatar: null },
-    { id: '6', name: 'Dr. Maria Santos', role: 'Lab Instructor', department: 'Science Dept.', email: 'm.santos@edumanage.edu', status: 'Active', avatar: null },
-  ]
-}
+import { Users, UserCheck, UserX, LayoutGrid, List, Eye, Pencil } from 'lucide-react'
 
 const statusColors: Record<string, { bg: string; text: string }> = {
-  Active: { bg: '#ECFDF5', text: '#059669' },
+  Active:   { bg: '#ECFDF5', text: '#059669' },
+  Inactive: { bg: '#FEF2F2', text: '#991B1B' },
   'On Leave': { bg: '#FFF7ED', text: '#C2410C' },
 }
 
 export default function StaffPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
-  const [dept, setDept] = useState('')
-  const [role, setRole] = useState('')
-  const [status, setStatus] = useState('')
+  const [search,   setSearch]   = useState('')
+  const [dept,     setDept]     = useState('')
+  const [status,   setStatus]   = useState('')
 
-  const { data = MOCK_STAFF } = useQuery({
-    queryKey: ['staff', dept, role, status],
-    queryFn: () => staffApi.list({ department: dept, role, status }).then(r => r.data),
-    placeholderData: MOCK_STAFF,
+  const { data = { data: [], total: 0, current_page: 1, last_page: 1 } } = useQuery({
+    queryKey: ['staff', search, dept, status],
+    queryFn:  () => staffApi.list({ search, department: dept, status, per_page: 50 }).then(r => r.data),
   })
+
+  // Compute stats from real data
+  const members    = data.data ?? []
+  const totalStaff = data.total ?? members.length
+  const active     = members.filter((m: any) => m.status === 'Active').length
+  const onLeave    = members.filter((m: any) => m.status === 'On Leave').length
 
   return (
     <AppLayout>
@@ -50,9 +44,9 @@ export default function StaffPage() {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 animate-in stagger-1">
           {[
-            { label: 'Total Staff', value: data.total, icon: Users, color: '#C9A020' },
-            { label: 'Active Today', value: data.active, icon: UserCheck, color: '#10B981' },
-            { label: 'On Leave', value: data.on_leave, icon: UserX, color: '#F59E0B' },
+            { label: 'Total Staff',  value: totalStaff, icon: Users,      color: '#C9A020' },
+            { label: 'Active Today', value: active,     icon: UserCheck,  color: '#10B981' },
+            { label: 'On Leave',     value: onLeave,    icon: UserX,      color: '#F59E0B' },
           ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="stat-card">
               <div className="flex items-center justify-between">
@@ -69,48 +63,54 @@ export default function StaffPage() {
         {/* Filters + View Toggle */}
         <div className="flex flex-wrap gap-3 items-end justify-between animate-in stagger-2">
           <div className="flex gap-2 flex-wrap">
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search staff..."
+              className="input w-48"
+            />
             <select value={dept} onChange={e => setDept(e.target.value)} className="select w-44">
               <option value="">All Departments</option>
-              <option>Mathematics Dept.</option><option>Physics Dept.</option>
-              <option>Administration</option><option>Humanities Dept.</option>
-            </select>
-            <select value={role} onChange={e => setRole(e.target.value)} className="select w-36">
-              <option value="">All Roles</option>
-              <option>Head of Department</option><option>Senior Lecturer</option>
-              <option>Adjunct Professor</option><option>Lab Instructor</option>
+              <option>Mathematics</option><option>Physics</option>
+              <option>Administration</option><option>English</option>
+              <option>Biology</option><option>Chemistry</option>
             </select>
             <select value={status} onChange={e => setStatus(e.target.value)} className="select w-36">
               <option value="">All Status</option>
-              <option>Active</option><option>On Leave</option>
+              <option>Active</option><option>Inactive</option><option>On Leave</option>
             </select>
           </div>
           <div className="flex gap-1 p-1 rounded-lg" style={{ background: '#F7F6F3', border: '1px solid #E4E1D8' }}>
             <button onClick={() => setViewMode('grid')} className="p-2 rounded-md transition-all"
-                    style={{ background: viewMode === 'grid' ? 'white' : 'transparent', boxShadow: viewMode === 'grid' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
+              style={{ background: viewMode === 'grid' ? 'white' : 'transparent', boxShadow: viewMode === 'grid' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
               <LayoutGrid size={16} style={{ color: viewMode === 'grid' ? '#C9A020' : '#6B6660' }} />
             </button>
             <button onClick={() => setViewMode('list')} className="p-2 rounded-md transition-all"
-                    style={{ background: viewMode === 'list' ? 'white' : 'transparent', boxShadow: viewMode === 'list' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
+              style={{ background: viewMode === 'list' ? 'white' : 'transparent', boxShadow: viewMode === 'list' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none' }}>
               <List size={16} style={{ color: viewMode === 'list' ? '#C9A020' : '#6B6660' }} />
             </button>
           </div>
         </div>
 
+        {members.length === 0 && (
+          <p className="text-center py-8 text-sm" style={{ color: '#6B6660' }}>No staff records found.</p>
+        )}
+
         {viewMode === 'grid' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 animate-in stagger-3">
-            {data.members.map((member: typeof MOCK_STAFF['members'][0]) => {
-              const sc = statusColors[member.status] || { bg: '#F3F4F6', text: '#4B5563' }
+            {members.map((member: any) => {
+              const sc = statusColors[member.status] ?? { bg: '#F3F4F6', text: '#4B5563' }
               return (
                 <div key={member.id} className="card-hover">
                   <div className="flex justify-end mb-3">
                     <span className="badge text-xs px-2.5 py-0.5 rounded-full font-medium"
-                          style={{ background: sc.bg, color: sc.text }}>
+                      style={{ background: sc.bg, color: sc.text }}>
                       {member.status}
                     </span>
                   </div>
                   <div className="flex flex-col items-center text-center mb-4">
                     <div className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold text-white mb-3"
-                         style={{ background: 'linear-gradient(135deg, #C9A020, #8B6E10)' }}>
+                      style={{ background: 'linear-gradient(135deg, #C9A020, #8B6E10)' }}>
                       {getInitials(member.name)}
                     </div>
                     <h3 className="font-bold text-base">{member.name}</h3>
@@ -150,23 +150,29 @@ export default function StaffPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.members.map((m: typeof MOCK_STAFF['members'][0]) => {
-                  const sc = statusColors[m.status] || { bg: '#F3F4F6', text: '#4B5563' }
+                {members.map((m: any) => {
+                  const sc = statusColors[m.status] ?? { bg: '#F3F4F6', text: '#4B5563' }
                   return (
                     <tr key={m.id}>
                       <td>
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0"
-                               style={{ background: 'linear-gradient(135deg, #C9A020, #8B6E10)' }}>
+                            style={{ background: 'linear-gradient(135deg, #C9A020, #8B6E10)' }}>
                             {getInitials(m.name)}
                           </div>
-                          <span className="font-semibold">{m.name}</span>
+                          <div>
+                            <span className="font-semibold">{m.name}</span>
+                            <p className="text-xs" style={{ color: '#6B6660' }}>{m.staff_id}</p>
+                          </div>
                         </div>
                       </td>
                       <td style={{ color: '#6B6660' }}>{m.role}</td>
                       <td style={{ color: '#6B6660' }}>{m.department}</td>
                       <td style={{ color: '#6B6660' }}>{m.email}</td>
-                      <td><span className="badge text-xs px-2.5 py-0.5 rounded-full" style={{ background: sc.bg, color: sc.text }}>{m.status}</span></td>
+                      <td>
+                        <span className="badge text-xs px-2.5 py-0.5 rounded-full"
+                          style={{ background: sc.bg, color: sc.text }}>{m.status}</span>
+                      </td>
                       <td>
                         <div className="flex gap-1">
                           <button className="btn-outline text-xs px-2.5 py-1.5 flex items-center gap-1"><Eye size={12} /> View</button>

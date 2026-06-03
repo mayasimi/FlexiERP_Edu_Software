@@ -1,4 +1,6 @@
 'use client'
+import { useQuery } from '@tanstack/react-query'
+import { teacherApi } from '@/lib/api'
 import { Clock, Users, ClipboardCheck, AlertCircle, MapPin, CheckCircle2, Calendar } from 'lucide-react'
 import { StatCard } from '../_components'
 import { MOCK_TODAY_SCHEDULE, MOCK_PENDING_ATTENDANCE, MOCK_UPCOMING_ASSESSMENTS } from '../_mock-data'
@@ -19,14 +21,23 @@ interface Props {
 }
 
 export default function DashboardSection({ onNavigate }: Props) {
-  const stats = { totalClasses: 5, totalStudents: 156, attendanceRate: 92, pendingGrading: 3 }
+
+  const { data } = useQuery({
+    queryKey: ['teacher-dashboard'],
+    queryFn: () => teacherApi.getDashboard().then(r => r.data),
+  })
+
+  const stats = data?.stats ?? { totalClasses: 0, totalStudents: 0, attendanceRate: 0, pendingGrading: 0 }
+  const todaySchedule = data?.today_schedule ?? []
+  const pendingAttendance = data?.pending_attendance ?? []
+  const upcomingAssessments = data?.upcoming_assessments ?? []
 
   return (
     <div>
       <div className="page-header animate-in">
         <div className="gold-accent" />
         <h1 className="page-title">Instructor Dashboard</h1>
-        <p className="page-subtitle">Welcome back, Dr. Feynman. Here&apos;s your day at a glance.</p>
+        <p className="page-subtitle">Welcome back, {stats.teacher_name}. Here&apos;s your day at a glance.</p>
       </div>
 
       <div className="px-6 pb-8 space-y-6">
@@ -46,7 +57,7 @@ export default function DashboardSection({ onNavigate }: Props) {
               <button onClick={() => onNavigate('schedule')} className="text-xs font-medium" style={{ color: '#C9A020' }}>View Full Schedule →</button>
             </div>
             <div className="space-y-3">
-              {MOCK_TODAY_SCHEDULE.map(slot => {
+              {todaySchedule.map(slot => {
                 const style = scheduleStatusStyle[slot.status || 'upcoming']
                 return (
                   <div key={slot.id} className="flex items-center gap-4 p-3 rounded-xl transition-all"
@@ -76,14 +87,14 @@ export default function DashboardSection({ onNavigate }: Props) {
                 <h3 className="font-bold text-base">Pending Attendance</h3>
                 <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: '#FEF2F2', color: '#991B1B' }}>{MOCK_PENDING_ATTENDANCE.length}</span>
               </div>
-              {MOCK_PENDING_ATTENDANCE.length === 0 ? (
+              {pendingAttendance.length === 0 ? (
                 <div className="text-center py-6">
                   <CheckCircle2 size={32} style={{ color: '#10B981' }} className="mx-auto mb-2" />
                   <p className="text-sm" style={{ color: '#6B6660' }}>All caught up!</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {MOCK_PENDING_ATTENDANCE.map(item => (
+                  {pendingAttendance.map(item => (
                     <div key={item.id} className="p-3 rounded-lg" style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
                       <div className="flex items-center justify-between">
                         <div>
@@ -105,7 +116,7 @@ export default function DashboardSection({ onNavigate }: Props) {
                 <button onClick={() => onNavigate('assessment')} className="text-xs font-medium" style={{ color: '#C9A020' }}>View All</button>
               </div>
               <div className="space-y-3">
-                {MOCK_UPCOMING_ASSESSMENTS.map(item => (
+                {upcomingAssessments.map(item => (
                   <div key={item.id} className="p-3 rounded-lg" style={{ background: '#F7F6F3', border: '1px solid #E4E1D8' }}>
                     <div className="flex items-center gap-2 mb-1.5">
                       <span className={`badge ${assessTypeStyle[item.type] || 'badge-gray'}`}>{item.type}</span>
