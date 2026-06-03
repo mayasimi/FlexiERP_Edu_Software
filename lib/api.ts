@@ -130,7 +130,7 @@ export const attendanceApi = {
     section_id: string
     subject_id: string
     date: string
-    attendance: Array<{ student_id: string; status: 'P' | 'A' | 'L' | 'H' }>
+    attendance: Array<{ student_id: string; status: 'P' | 'A' | 'L' | 'S' }>
   }) => api.post('/attendance/save', data),
   getSummary: (params: { class_id: string; section_id: string; date: string }) =>
     api.get('/attendance/summary', { params }),
