@@ -96,18 +96,7 @@ export default function Navbar({ userName, userRole, userEmail, settingsHref = '
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           overflow: 'hidden', flexShrink: 0,
         }}>
-          {!logoFailed ? (
-            <Image
-              src="/FLEXI_LOGO.png"
-              alt="School logo"
-              width={40}
-              height={40}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              onError={() => setLogoFailed(true)}
-            />
-          ) : (
-            <BookOpen size={19} style={{ color: GOLD }} />
-          )}
+          <BookOpen size={19} style={{ color: GOLD }} />
         </div>
         <div>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#0D0D0D', lineHeight: 1.1 }}>FlexiSoftware</div>

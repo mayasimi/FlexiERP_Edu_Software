@@ -26,6 +26,16 @@
       "static/chunks/main-app.js",
       "static/chunks/app/dashboard/layout.js"
     ],
+    "/staff/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/staff/page.js"
+    ],
+    "/admin/payroll/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/admin/payroll/page.js"
+    ],
     "/instructor-dashboard/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -36,6 +46,11 @@
       "static/chunks/main-app.js",
       "static/chunks/app/instructor-dashboard/layout.js"
     ],
+    "/attendance/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/attendance/page.js"
+    ],
     "/portal/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -45,21 +60,6 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/portal/layout.js"
-    ],
-    "/messaging/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/messaging/page.js"
-    ],
-    "/academics/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/academics/page.js"
-    ],
-    "/timetable/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/timetable/page.js"
     ]
   }
 }

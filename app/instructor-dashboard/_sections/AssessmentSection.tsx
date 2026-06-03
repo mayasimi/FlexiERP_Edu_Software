@@ -1,5 +1,8 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
+import { useQuery, useMutation } from '@tanstack/react-query'
+import { teacherApi } from '@/lib/api'
+import { Plus, Edit2, Save, X, Users, Calendar, Award, Percent } from 'lucide-react'
 import { Save } from 'lucide-react'
 import { PageHeader, StudentAvatar } from '../_components'
 import { adminMockDb } from '@/lib/admin-mock-db'

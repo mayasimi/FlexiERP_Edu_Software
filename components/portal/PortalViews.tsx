@@ -1,5 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { portalApi } from '@/lib/api'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { AlertCircle, Award, Bell, BookMarked, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock, Download, Printer, Target, TrendingUp, UserRound } from 'lucide-react'
@@ -58,10 +60,21 @@ function printElementById(elementId: string, title: string) {
 
 export function Dashboard({ role }: { role: RoleType }) {
   const d = mockData.student
+  const { data: dashboardData } = useQuery({
+  queryKey: ['portal-dashboard'],
+  queryFn: () => portalApi.getDashboard().then(r => r.data),
+  placeholderData: {
+    student: {},
+    stats: { attendance_pct: 0, avg_score: 0, outstanding_fees: 0, upcoming_tests: 0 },
+    upcoming_assessments: [],
+    fees: { structure: [] },
+    recent_activity: [],
+  },
+})
   const [showTeacherContact, setShowTeacherContact] = useState(false)
-  const totalFeesDue = d.fees.structure.reduce((sum, fee) => sum + fee.amount, 0)
+  const totalFeesDue = dashboardData.fees?.structure?.reduce((sum, fee) => sum + fee.amount, 0) ?? 0
   const avgAtt = Math.round(
-    d.attendance.reduce((sum, item) => sum + (item.present / item.total) * 100, 0) / d.attendance.length,
+    dashboardData.stats.attendance_pct,
   )
 
   return (

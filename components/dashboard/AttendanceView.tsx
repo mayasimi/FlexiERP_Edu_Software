@@ -1,12 +1,16 @@
 'use client'
 
 import Card from '@/components/ui/Card'
+import { useQuery } from '@tanstack/react-query'
+import { portalApi } from '@/lib/api'
 
-const attendanceRecords = [
-  { subject: 'Mathematics', present: 28, absent: 2, late: 1, total: 31 },
-  { subject: 'English Language', present: 30, absent: 1, late: 0, total: 31 },
-  { subject: 'Biology', present: 27, absent: 3, late: 1, total: 31 },
-]
+const { data: attendanceData } = useQuery({
+  queryKey: ['portal-attendance'],
+  queryFn: () => portalApi.getAttendance().then(r => r.data),
+  placeholderData: { summary: [], overall_pct: 0 },
+})
+
+const attendanceRecords = attendanceData.summary
 
 export default function AttendanceView() {
   return (
