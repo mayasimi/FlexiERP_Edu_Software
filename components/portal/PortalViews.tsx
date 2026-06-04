@@ -13,6 +13,22 @@ import { RoleType } from './portalTypes'
 
 const PayStackModal = dynamic(() => import('@/components/payment/PayStackModal'), { ssr: false })
 
+type PortalDashboardData = {
+  student: Record<string, unknown>
+  stats: { attendance_pct: number; avg_score: number; outstanding_fees: number; upcoming_tests: number }
+  upcoming_assessments: unknown[]
+  fees: { structure: Array<{ amount: number }> }
+  recent_activity: unknown[]
+}
+
+const emptyPortalDashboard: PortalDashboardData = {
+  student: {},
+  stats: { attendance_pct: 0, avg_score: 0, outstanding_fees: 0, upcoming_tests: 0 },
+  upcoming_assessments: [],
+  fees: { structure: [] },
+  recent_activity: [],
+}
+
 function printElementById(elementId: string, title: string) {
   if (typeof window === 'undefined') return
 
@@ -60,21 +76,16 @@ function printElementById(elementId: string, title: string) {
 
 export function Dashboard({ role }: { role: RoleType }) {
   const d = mockData.student
-  const { data: dashboardData } = useQuery({
-  queryKey: ['portal-dashboard'],
-  queryFn: () => portalApi.getDashboard().then(r => r.data),
-  placeholderData: {
-    student: {},
-    stats: { attendance_pct: 0, avg_score: 0, outstanding_fees: 0, upcoming_tests: 0 },
-    upcoming_assessments: [],
-    fees: { structure: [] },
-    recent_activity: [],
-  },
-})
+  const { data: dashboardData } = useQuery<PortalDashboardData>({
+    queryKey: ['portal-dashboard'],
+    queryFn: () => portalApi.getDashboard().then(r => r.data),
+    placeholderData: emptyPortalDashboard,
+  })
   const [showTeacherContact, setShowTeacherContact] = useState(false)
-  const totalFeesDue = dashboardData.fees?.structure?.reduce((sum, fee) => sum + fee.amount, 0) ?? 0
+  const dashboard = dashboardData ?? emptyPortalDashboard
+  const totalFeesDue = dashboard.fees.structure.reduce((sum, fee) => sum + fee.amount, 0)
   const avgAtt = Math.round(
-    dashboardData.stats.attendance_pct,
+    dashboard.stats.attendance_pct,
   )
 
   return (
@@ -278,6 +289,7 @@ export function Fees() {
   const handlePaymentSuccess = ({ reference, amount }: { reference: string; amount: number; studentId: string; selectedFees: FeeItem[] }) => {
     setPaymentHistory((current) => [
       {
+        id: reference,
         date: new Date().toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' }),
         desc: `${mockData.term} Fees Payment`,
         amount,
@@ -359,17 +371,24 @@ export function Fees() {
           </div>
         </Card>
         <Card>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div style={{ marginBottom: 14 }}>
             <CardLabel>Payment History</CardLabel>
-            <button style={{ background: 'transparent', border: `1px solid ${GOLD}66`, color: GOLD, fontSize: 11, padding: '5px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 700 }}>Download</button>
           </div>
           {paymentHistory.map((item, index) => (
             <div key={index} style={{ padding: '10px 0', borderBottom: index < paymentHistory.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                 <div>
                   <p style={{ margin: '0 0 2px', fontSize: 13, color: '#0D0D0D', fontWeight: 500 }}>{item.desc}</p>
                   <p style={{ margin: '0 0 1px', fontSize: 11, color: '#9B9590' }}>{item.date} / {item.method}</p>
                   <p style={{ margin: 0, fontSize: 10, color: '#9B9590', fontFamily: 'monospace' }}>{item.ref}</p>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                    <a href={`/api/payments/${encodeURIComponent(item.id || item.ref)}/receipt`} target="_blank" rel="noreferrer" style={{ border: `1px solid ${GOLD}66`, color: GOLD, background: '#FFFFFF', fontSize: 11, padding: '5px 10px', borderRadius: 6, fontWeight: 800, textDecoration: 'none' }}>
+                      View Receipt
+                    </a>
+                    <a href={`/api/payments/${encodeURIComponent(item.id || item.ref)}/receipt`} download style={{ border: 'none', color: '#0D0D0D', background: GOLD, fontSize: 11, padding: '6px 10px', borderRadius: 6, fontWeight: 900, textDecoration: 'none' }}>
+                      Download Receipt
+                    </a>
+                  </div>
                 </div>
                 <p style={{ margin: 0, fontSize: 13, color: GREEN, fontFamily: 'monospace', fontWeight: 700 }}>NGN {item.amount.toLocaleString()}</p>
               </div>
@@ -392,40 +411,55 @@ export function Fees() {
   )
 }
 export function Attendance() {
-  const [view, setView] = useState<'list' | 'calendar'>('list')
+  const [view, setView] = useState<'weeks' | 'report'>('weeks')
   const att = mockData.student.attendance
-  const totalPresent = att.reduce((sum, item) => sum + item.present, 0)
-  const totalAbsent = att.reduce((sum, item) => sum + item.absent, 0)
-  const totalLate = att.reduce((sum, item) => sum + item.late, 0)
-  const overall = Math.round((totalPresent / att.reduce((sum, item) => sum + item.total, 0)) * 100)
-  const calDays = Array.from({ length: 31 }, (_, index) => {
-    if ([0, 6].includes(index % 7)) return 'weekend'
-    const random = Math.random()
-    return random > 0.88 ? 'absent' : random > 0.76 ? 'late' : 'present'
-  })
+  const [selectedWeekStart, setSelectedWeekStart] = useState(att[0]?.weekStart || '')
+  const selectedWeek = att.find((item) => item.weekStart === selectedWeekStart) || att[0]
+  const totalPresent = att.reduce((sum, item) => sum + item.daysPresent, 0)
+  const totalSchoolDays = att.reduce((sum, item) => sum + item.schoolDays, 0)
+  const totalAbsent = totalSchoolDays - totalPresent
+  const presentWeeks = att.filter((item) => item.status === 'present').length
+  const overall = totalSchoolDays > 0 ? Math.round((totalPresent / totalSchoolDays) * 100) : 0
+  const formatWeekDate = (value: string) => new Date(value).toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' })
+  const statusColor = (status: string) => (status === 'present' ? GREEN : RED)
 
   return (
     <div>
       <div style={{ marginBottom: 22 }}>
-        <h2 style={{ margin: '0 0 4px', fontSize: 22, color: '#0D0D0D', fontFamily: "'Georgia',serif", fontWeight: 400 }}>Attendance Record</h2>
-        <p style={{ margin: 0, fontSize: 13, color: '#5C5750' }}>{mockData.term} · {mockData.session}</p>
+        <h2 style={{ margin: '0 0 4px', fontSize: 22, color: '#0D0D0D', fontFamily: "'Georgia',serif", fontWeight: 400 }}>Weekly Attendance Record</h2>
+        <p style={{ margin: 0, fontSize: 13, color: '#5C5750' }}>{mockData.term} · {mockData.session} · {mockData.student.class}</p>
       </div>
       {overall < 75 && (
         <div style={{ background: `${RED}10`, border: `1px solid ${RED}44`, borderRadius: 10, padding: '12px 18px', marginBottom: 16 }}>
-          <p style={{ margin: 0, fontSize: 13, color: RED, fontWeight: 600 }}>⚠️ Attendance below 75% minimum. Students below this threshold may be barred from sitting examinations.</p>
+          <p style={{ margin: 0, fontSize: 13, color: RED, fontWeight: 600 }}>Attendance below 75% minimum. Students below this threshold may be barred from sitting examinations.</p>
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
-        <StatCard label='Overall' value={`${overall}%`} sub='Attendance rate' color={overall >= 75 ? GOLD : RED} />
+        <StatCard label='Overall' value={`${overall}%`} sub='Weekly attendance rate' color={overall >= 75 ? GOLD : RED} />
         <StatCard label='Present' value={`${totalPresent}`} sub='Days attended' color={GREEN} />
         <StatCard label='Absent' value={`${totalAbsent}`} sub='Days missed' color={RED} />
-        <StatCard label='Late' value={`${totalLate}`} sub='Late arrivals' color='#E8A020' />
+        <StatCard label='Weeks Present' value={`${presentWeeks}/${att.length}`} sub='Recorded weeks' color={BLUE} />
       </div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {['list', 'calendar'].map((item) => (
+      <Card style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'end', gap: 12, flexWrap: 'wrap' }}>
+        <label style={{ display: 'grid', gap: 5, minWidth: 240 }}>
+          <span style={{ color: '#5C5750', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.8 }}>View Week</span>
+          <select
+            value={selectedWeekStart}
+            onChange={(event) => setSelectedWeekStart(event.target.value)}
+            style={{ border: `1px solid ${BORDER}`, borderRadius: 8, padding: '9px 11px', color: '#0D0D0D', background: '#FFFFFF', outlineColor: GOLD }}
+          >
+            {att.map((item) => (
+              <option key={item.weekStart} value={item.weekStart}>
+                {item.week} - {formatWeekDate(item.weekStart)} to {formatWeekDate(item.weekEnd)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {['weeks', 'report'].map((item) => (
           <button
             key={item}
-            onClick={() => setView(item as 'list' | 'calendar')}
+            onClick={() => setView(item as 'weeks' | 'report')}
             style={{
               padding: '7px 18px',
               borderRadius: 7,
@@ -437,69 +471,52 @@ export function Attendance() {
               cursor: 'pointer',
             }}
           >
-            {item === 'list' ? 'By Subject' : 'Calendar View'}
+            {item === 'weeks' ? 'All Weeks' : 'Selected Week Report'}
           </button>
         ))}
-      </div>
-      {view === 'list' ? (
+        </div>
+      </Card>
+      {view === 'weeks' ? (
         <div style={{ display: 'grid', gap: 10 }}>
-          {att.map((item, index) => {
-            const pct = Math.round((item.present / item.total) * 100)
+          {att.map((item) => {
+            const pct = Math.round((item.daysPresent / item.schoolDays) * 100)
+            const color = statusColor(item.status)
             return (
-              <Card key={index} style={{ padding: '14px 18px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#0D0D0D' }}>{item.subject}</p>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: pct >= 75 ? GREEN : RED, fontFamily: 'monospace' }}>{pct}%</span>
+              <Card key={item.weekStart} style={{ padding: '14px 18px', borderColor: selectedWeekStart === item.weekStart ? `${GOLD}88` : BORDER }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
+                  <div>
+                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#0D0D0D' }}>{item.week}</p>
+                    <p style={{ margin: '3px 0 0', fontSize: 12, color: '#9B9590' }}>{formatWeekDate(item.weekStart)} to {formatWeekDate(item.weekEnd)}</p>
+                  </div>
+                  <span style={{ fontSize: 14, fontWeight: 800, color, fontFamily: 'monospace' }}>{pct}%</span>
                 </div>
                 <div style={{ height: 5, background: BORDER, borderRadius: 3, marginBottom: 8 }}>
-                  <div style={{ height: 5, borderRadius: 3, width: `${pct}%`, background: pct >= 75 ? GREEN : RED }} />
+                  <div style={{ height: 5, borderRadius: 3, width: `${pct}%`, background: color }} />
                 </div>
-                <div style={{ display: 'flex', gap: 16 }}>
-                  <span style={{ fontSize: 12, color: GREEN }}>● Present: {item.present}</span>
-                  <span style={{ fontSize: 12, color: RED }}>● Absent: {item.absent}</span>
-                  <span style={{ fontSize: 12, color: '#E8A020' }}>● Late: {item.late}</span>
-                  <span style={{ fontSize: 12, color: '#9B9590' }}>Total: {item.total} days</span>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, color: GREEN }}>Present: {item.daysPresent}</span>
+                  <span style={{ fontSize: 12, color: RED }}>Absent: {item.schoolDays - item.daysPresent}</span>
+                  <span style={{ fontSize: 12, color: '#9B9590' }}>Total: {item.schoolDays} school days</span>
+                  <span style={{ fontSize: 12, color, fontWeight: 700, textTransform: 'capitalize' }}>{item.status}</span>
                 </div>
               </Card>
             )
           })}
         </div>
-      ) : (
+      ) : selectedWeek ? (
         <Card>
-          <CardLabel>February 2026 — School Calendar</CardLabel>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 5 }}>
-            {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((day) => (
-              <p key={day} style={{ margin: '0 0 6px', fontSize: 10, color: '#9B9590', textAlign: 'center', fontFamily: 'monospace', fontWeight: 600 }}>{day}</p>
-            ))}
-            {calDays.map((status, index) => (
-              <div
-                key={index}
-                style={{
-                  height: 34,
-                  borderRadius: 6,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  fontFamily: 'monospace',
-                  background: status === 'weekend' ? '#F0EFE8' : status === 'present' ? `${GREEN}18` : status === 'absent' ? `${RED}18` : '#E8A02018',
-                  border: `1px solid ${status === 'weekend' ? BORDER : status === 'present' ? GREEN + '44' : status === 'absent' ? RED + '44' : '#E8A02044'}`,
-                  color: status === 'weekend' ? '#9B9590' : status === 'present' ? GREEN : status === 'absent' ? RED : '#E8A020',
-                }}
-              >
-                {index + 1}
-              </div>
-            ))}
+          <CardLabel>{selectedWeek.week} Attendance Report</CardLabel>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12, marginBottom: 16 }}>
+            <StatCard label='Week' value={selectedWeek.week} sub={`${formatWeekDate(selectedWeek.weekStart)} to ${formatWeekDate(selectedWeek.weekEnd)}`} color={GOLD} />
+            <StatCard label='Status' value={selectedWeek.status === 'present' ? 'Present' : 'Absent'} sub='Weekly mark' color={statusColor(selectedWeek.status)} />
+            <StatCard label='Days Present' value={`${selectedWeek.daysPresent}/${selectedWeek.schoolDays}`} sub='School days' color={GREEN} />
           </div>
-          <div style={{ display: 'flex', gap: 16, marginTop: 14 }}>
-            <span style={{ fontSize: 11, color: GREEN }}>■ Present</span>
-            <span style={{ fontSize: 11, color: RED }}>■ Absent</span>
-            <span style={{ fontSize: 11, color: '#E8A020' }}>■ Late</span>
-            <span style={{ fontSize: 11, color: '#9B9590' }}>■ Weekend</span>
+          <div style={{ background: '#FAFAF8', border: `1px solid ${BORDER}`, borderRadius: 10, padding: 14 }}>
+            <p style={{ margin: 0, color: '#0D0D0D', fontSize: 13, fontWeight: 800 }}>Teacher Note</p>
+            <p style={{ margin: '6px 0 0', color: '#5C5750', fontSize: 13, lineHeight: 1.6 }}>{selectedWeek.note || 'No note was added for this week.'}</p>
           </div>
         </Card>
-      )}
+      ) : null}
     </div>
   )
 }

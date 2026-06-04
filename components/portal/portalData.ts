@@ -58,12 +58,12 @@ export const mockData = {
       { name: 'Literature in English', teacher: 'Mrs. Nwosu', ca1: 20, ca2: 19, midterm: 39 },
     ],
     attendance: [
-      { subject: 'Mathematics', present: 28, absent: 2, late: 1, total: 31 },
-      { subject: 'English Language', present: 30, absent: 1, late: 0, total: 31 },
-      { subject: 'Biology', present: 25, absent: 4, late: 2, total: 31 },
-      { subject: 'Chemistry', present: 27, absent: 3, late: 1, total: 31 },
-      { subject: 'Physics', present: 29, absent: 2, late: 0, total: 31 },
-      { subject: 'Economics', present: 30, absent: 1, late: 0, total: 31 },
+      { week: 'Week 1', weekStart: '2026-01-12', weekEnd: '2026-01-18', status: 'present', daysPresent: 5, schoolDays: 5, note: 'Present for the full week.' },
+      { week: 'Week 2', weekStart: '2026-01-19', weekEnd: '2026-01-25', status: 'present', daysPresent: 5, schoolDays: 5, note: 'Present for the full week.' },
+      { week: 'Week 3', weekStart: '2026-01-26', weekEnd: '2026-02-01', status: 'absent', daysPresent: 3, schoolDays: 5, note: 'Absent for two school days. Parent follow-up recommended.' },
+      { week: 'Week 4', weekStart: '2026-02-02', weekEnd: '2026-02-08', status: 'present', daysPresent: 5, schoolDays: 5, note: 'Present for the full week.' },
+      { week: 'Week 5', weekStart: '2026-02-09', weekEnd: '2026-02-15', status: 'present', daysPresent: 4, schoolDays: 5, note: 'One excused absence recorded.' },
+      { week: 'Week 6', weekStart: '2026-02-16', weekEnd: '2026-02-22', status: 'present', daysPresent: 5, schoolDays: 5, note: 'Present for the full week.' },
     ],
     fees: {
       structure: [
@@ -75,9 +75,9 @@ export const mockData = {
         { label: 'WAEC Examination Levy', amount: 15000 },
       ],
       history: [
-        { date: 'Sep 12, 2025', desc: '1st Term School Fees', amount: 85000, method: 'Bank Transfer', ref: 'GT-20250912-001' },
-        { date: 'Sep 12, 2025', desc: '1st Term PTA Levy', amount: 5000, method: 'Bank Transfer', ref: 'GT-20250912-002' },
-        { date: 'Jan 15, 2026', desc: '2nd Term Fees (Part Payment)', amount: 50000, method: 'Paystack', ref: 'PS-20260115-003' },
+        { id: 'payment-002', date: 'Sep 12, 2025', desc: '1st Term School Fees', amount: 85000, method: 'Bank Transfer', ref: 'GT-20250912-001' },
+        { id: 'payment-003', date: 'Sep 12, 2025', desc: '1st Term PTA Levy', amount: 5000, method: 'Bank Transfer', ref: 'GT-20250912-002' },
+        { id: 'payment-001', date: 'Jan 15, 2026', desc: '2nd Term Fees (Part Payment)', amount: 50000, method: 'Paystack', ref: 'PS-20260115-003' },
       ],
     },
     reportCard: {

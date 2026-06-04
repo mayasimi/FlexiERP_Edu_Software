@@ -267,8 +267,8 @@ export const portalApi = {
   // SubjectsView: subjects with CA scores
   getSubjects: () => api.get('/portal/subjects'),
 
-  // AttendanceView: attendance summary per subject
-  getAttendance: () => api.get('/portal/attendance'),
+  // AttendanceView: weekly attendance records and selected-week reports
+  getAttendance: (params?: { weekStart?: string }) => api.get('/portal/attendance', { params }),
 
   // FeesView: fee breakdown + payment history
   getFees: () => api.get('/portal/fees'),
