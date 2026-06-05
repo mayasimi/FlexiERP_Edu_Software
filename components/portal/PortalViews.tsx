@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { portalApi } from '@/lib/api'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { AlertCircle, Award, Bell, BookMarked, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock, Download, Printer, Target, TrendingUp, UserRound } from 'lucide-react'
 import type { FeeItem } from '@/components/payment/PayStackModal'
 import { escapeHtml } from '@/lib/security'
@@ -29,6 +30,55 @@ const emptyPortalDashboard: PortalDashboardData = {
   recent_activity: [],
 }
 
+function AttendanceBarChart({ compact = false }: { compact?: boolean }) {
+  const records = mockData.student.attendance
+  const data = records.map((item) => ({
+    week: item.week.replace('Week ', 'W'),
+    rate: item.schoolDays > 0 ? Math.round((item.daysPresent / item.schoolDays) * 100) : 0,
+  }))
+  const totalPresent = records.reduce((sum, item) => sum + item.daysPresent, 0)
+  const totalSchoolDays = records.reduce((sum, item) => sum + item.schoolDays, 0)
+  const average = totalSchoolDays > 0 ? Math.round((totalPresent / totalSchoolDays) * 100) : 0
+
+  return (
+    <div
+      style={{
+        background: '#FFFFFF',
+        border: `1px solid ${BORDER}`,
+        borderLeft: `3px solid ${GREEN}`,
+        borderRadius: 12,
+        padding: compact ? '12px 14px' : '14px 16px',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+        minHeight: compact ? 138 : 156,
+        display: 'grid',
+        gridTemplateRows: 'auto 1fr auto',
+        gap: 8,
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
+        <p style={{ margin: 0, fontSize: 10, color: '#9B9590', letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 600 }}>Attendance</p>
+        <span style={{ color: average >= 75 ? GREEN : RED, fontSize: 18, fontFamily: "'Georgia',serif", fontWeight: 800 }}>{average}%</span>
+      </div>
+      <div style={{ width: '100%', height: compact ? 70 : 84 }}>
+        <ResponsiveContainer width="100%" height={compact ? 70 : 84}>
+          <BarChart data={data} margin={{ top: 4, right: 0, bottom: 0, left: -34 }}>
+            <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9B9590' }} />
+            <YAxis domain={[0, 100]} hide />
+            <Tooltip
+              cursor={{ fill: '#F6F1E6' }}
+              formatter={(value) => [`${value}%`, 'Attendance']}
+              labelStyle={{ color: '#0D0D0D', fontWeight: 700 }}
+              contentStyle={{ border: `1px solid ${BORDER}`, borderRadius: 8, boxShadow: '0 8px 18px rgba(13,13,13,0.10)' }}
+            />
+            <Bar dataKey="rate" fill={GREEN} radius={[5, 5, 2, 2]} barSize={compact ? 14 : 18} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <p style={{ margin: 0, color: '#5C5750', fontSize: 12 }}>Weekly attendance trend</p>
+    </div>
+  )
+}
+
 function printElementById(elementId: string, title: string) {
   if (typeof window === 'undefined') return
 
@@ -37,7 +87,27 @@ function printElementById(elementId: string, title: string) {
 
   const printWindow = window.open('', '_blank', 'width=900,height=1100,noopener,noreferrer')
   if (!printWindow) {
+    const style = document.createElement('style')
+    style.setAttribute('data-report-print-style', 'true')
+    style.innerHTML = `
+      @media print {
+        body * { visibility: hidden !important; }
+        #${elementId}, #${elementId} * { visibility: visible !important; }
+        #${elementId} {
+          position: absolute !important;
+          inset: 0 auto auto 0 !important;
+          width: 100% !important;
+          max-width: none !important;
+          margin: 0 !important;
+          box-shadow: none !important;
+          border: none !important;
+        }
+        #${elementId} button { display: none !important; }
+      }
+    `
+    document.head.appendChild(style)
     window.print()
+    window.setTimeout(() => style.remove(), 500)
     return
   }
 
@@ -84,9 +154,6 @@ export function Dashboard({ role }: { role: RoleType }) {
   const [showTeacherContact, setShowTeacherContact] = useState(false)
   const dashboard = dashboardData ?? emptyPortalDashboard
   const totalFeesDue = dashboard.fees.structure.reduce((sum, fee) => sum + fee.amount, 0)
-  const avgAtt = Math.round(
-    dashboard.stats.attendance_pct,
-  )
 
   return (
     <div>
@@ -156,7 +223,7 @@ export function Dashboard({ role }: { role: RoleType }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 12, marginBottom: 24 }}>
         <StatCard label='Fees Balance' value={`₦${(totalFeesDue / 1000).toFixed(0)}k`} sub='This term outstanding' color={RED} />
         <StatCard label='Avg CA Score' value='72%' sub='2nd Term CAs' color={GOLD} />
-        <StatCard label='Attendance' value={`${avgAtt}%`} sub='This term' color={GREEN} />
+        <AttendanceBarChart />
         <StatCard label='Class Position' value={`${d.reportCard.position}th`} sub={`of ${d.reportCard.classSize} students`} color={BLUE} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -271,10 +338,12 @@ export function Subjects() {
 export function Fees() {
   const fees = mockData.student.fees
   const feeItems: FeeItem[] = fees.structure.map((fee, index) => ({ id: index + 1, ...fee }))
+  type PaymentHistoryItem = (typeof fees.history)[number] & { items?: Array<{ label: string; amount: number }> }
   const [selectedFeeIds, setSelectedFeeIds] = useState<number[]>(feeItems.map((fee) => fee.id))
   const [isPaymentOpen, setIsPaymentOpen] = useState(false)
   const [paymentNotice, setPaymentNotice] = useState('')
-  const [paymentHistory, setPaymentHistory] = useState(fees.history)
+  const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryItem[]>(fees.history)
+  const [selectedReceipt, setSelectedReceipt] = useState<PaymentHistoryItem | null>(null)
   const [currentTermPaid, setCurrentTermPaid] = useState(50000)
   const totalDue = feeItems.reduce((sum, fee) => sum + fee.amount, 0)
   const totalPaid = paymentHistory.reduce((sum, fee) => sum + fee.amount, 0)
@@ -286,7 +355,7 @@ export function Fees() {
     setSelectedFeeIds((current) => (current.includes(id) ? current.filter((feeId) => feeId !== id) : [...current, id]))
   }
 
-  const handlePaymentSuccess = ({ reference, amount }: { reference: string; amount: number; studentId: string; selectedFees: FeeItem[] }) => {
+  const handlePaymentSuccess = ({ reference, amount, selectedFees }: { reference: string; amount: number; studentId: string; selectedFees: FeeItem[] }) => {
     setPaymentHistory((current) => [
       {
         id: reference,
@@ -295,6 +364,7 @@ export function Fees() {
         amount,
         method: 'PayStack',
         ref: reference,
+        items: selectedFees.map((fee) => ({ label: fee.label, amount: fee.amount })),
       },
       ...current,
     ])
@@ -381,14 +451,13 @@ export function Fees() {
                   <p style={{ margin: '0 0 2px', fontSize: 13, color: '#0D0D0D', fontWeight: 500 }}>{item.desc}</p>
                   <p style={{ margin: '0 0 1px', fontSize: 11, color: '#9B9590' }}>{item.date} / {item.method}</p>
                   <p style={{ margin: 0, fontSize: 10, color: '#9B9590', fontFamily: 'monospace' }}>{item.ref}</p>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-                    <a href={`/api/payments/${encodeURIComponent(item.id || item.ref)}/receipt`} target="_blank" rel="noreferrer" style={{ border: `1px solid ${GOLD}66`, color: GOLD, background: '#FFFFFF', fontSize: 11, padding: '5px 10px', borderRadius: 6, fontWeight: 800, textDecoration: 'none' }}>
-                      View Receipt
-                    </a>
-                    <a href={`/api/payments/${encodeURIComponent(item.id || item.ref)}/receipt`} download style={{ border: 'none', color: '#0D0D0D', background: GOLD, fontSize: 11, padding: '6px 10px', borderRadius: 6, fontWeight: 900, textDecoration: 'none' }}>
-                      Download Receipt
-                    </a>
-                  </div>
+                  <button
+                    type='button'
+                    onClick={() => setSelectedReceipt(item)}
+                    style={{ marginTop: 8, border: `1px solid ${GOLD}66`, color: GOLD, background: '#FFFFFF', fontSize: 11, padding: '6px 12px', borderRadius: 6, fontWeight: 900, cursor: 'pointer' }}
+                  >
+                    View
+                  </button>
                 </div>
                 <p style={{ margin: 0, fontSize: 13, color: GREEN, fontFamily: 'monospace', fontWeight: 700 }}>NGN {item.amount.toLocaleString()}</p>
               </div>
@@ -396,6 +465,110 @@ export function Fees() {
           ))}
         </Card>
       </div>
+      {selectedReceipt && (
+        <div
+          role='dialog'
+          aria-modal='true'
+          aria-label='Payment receipt'
+          onClick={() => setSelectedReceipt(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(13,13,13,0.56)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{ width: 'min(620px,100%)', maxHeight: '90vh', overflowY: 'auto', background: '#FFFFFF', borderRadius: 14, border: `1px solid ${BORDER}`, boxShadow: '0 24px 70px rgba(13,13,13,0.28)' }}
+          >
+            <div style={{ background: '#0D0D0D', color: '#FFFFFF', padding: 20, display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', gap: 14, alignItems: 'center', minWidth: 0 }}>
+                <div style={{ width: 58, height: 58, borderRadius: 12, background: '#FFFFFF', border: `1px solid ${GOLD}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                  <img src='/FLEXI_LOGO.png' alt={`${mockData.schoolName} logo`} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 7 }} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: 0, color: GOLD, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 900 }}>Official Receipt</p>
+                  <h3 style={{ margin: '5px 0 0', color: '#FFFFFF', fontSize: 23, fontFamily: "'Georgia',serif", fontWeight: 400, lineHeight: 1.15 }}>{mockData.schoolName}</h3>
+                  <p style={{ margin: '5px 0 0', color: '#D7D2CB', fontSize: 12 }}>{mockData.term} · {mockData.session}</p>
+                </div>
+              </div>
+              <button
+                type='button'
+                onClick={() => setSelectedReceipt(null)}
+                aria-label='Close receipt'
+                style={{ border: `1px solid ${GOLD}55`, background: 'transparent', color: GOLD, borderRadius: 8, width: 34, height: 34, fontSize: 18, lineHeight: 1, cursor: 'pointer', flexShrink: 0 }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ padding: 22, display: 'grid', gap: 18 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 12 }}>
+                <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, padding: 13, background: '#FAFAF8' }}>
+                  <p style={{ margin: 0, color: '#9B9590', fontSize: 10, fontWeight: 900, letterSpacing: 0.9, textTransform: 'uppercase' }}>Student</p>
+                  <p style={{ margin: '6px 0 0', color: '#0D0D0D', fontSize: 14, fontWeight: 850 }}>{mockData.student.name}</p>
+                  <p style={{ margin: '3px 0 0', color: '#5C5750', fontSize: 12 }}>{mockData.student.id} · {mockData.student.class}</p>
+                </div>
+                <div style={{ border: `1px solid ${GREEN}33`, borderRadius: 10, padding: 13, background: `${GREEN}10` }}>
+                  <p style={{ margin: 0, color: GREEN, fontSize: 10, fontWeight: 900, letterSpacing: 0.9, textTransform: 'uppercase' }}>Amount Paid</p>
+                  <p style={{ margin: '6px 0 0', color: GREEN, fontSize: 24, fontFamily: "'Georgia',serif", fontWeight: 800 }}>NGN {selectedReceipt.amount.toLocaleString()}</p>
+                </div>
+              </div>
+
+              <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '12px 14px', background: '#FAFAF8', borderBottom: `1px solid ${BORDER}` }}>
+                  <span style={{ color: '#9B9590', fontSize: 11, fontWeight: 900, letterSpacing: 0.8, textTransform: 'uppercase' }}>Payment Items</span>
+                  <span style={{ color: '#9B9590', fontSize: 11, fontWeight: 900, letterSpacing: 0.8, textTransform: 'uppercase' }}>Amount</span>
+                </div>
+                {(selectedReceipt.items && selectedReceipt.items.length > 0 ? selectedReceipt.items : [{ label: selectedReceipt.desc, amount: selectedReceipt.amount }]).map((item, index) => (
+                  <div key={`${item.label}-${index}`} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, padding: '12px 14px', borderTop: index === 0 ? 'none' : `1px solid ${BORDER}`, background: '#FFFFFF' }}>
+                    <span style={{ color: '#0D0D0D', fontSize: 13, fontWeight: 750 }}>{item.label}</span>
+                    <span style={{ color: '#0D0D0D', fontSize: 13, fontWeight: 850, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>NGN {item.amount.toLocaleString()}</span>
+                  </div>
+                ))}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, padding: '12px 14px', background: `${GREEN}10`, borderTop: `1px solid ${GREEN}33` }}>
+                  <span style={{ color: GREEN, fontSize: 13, fontWeight: 900 }}>Total Paid</span>
+                  <span style={{ color: GREEN, fontSize: 14, fontWeight: 900, fontFamily: 'monospace' }}>NGN {selectedReceipt.amount.toLocaleString()}</span>
+                </div>
+              </div>
+
+              <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
+                {[
+                  ['Payment Date', selectedReceipt.date],
+                  ['Payment Method', selectedReceipt.method],
+                  ['Reference', selectedReceipt.ref],
+                  ['Receipt ID', selectedReceipt.id || selectedReceipt.ref],
+                  ['Status', 'Successful'],
+                ].map(([label, value], index) => (
+                  <div key={label} style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 12, padding: '12px 14px', borderTop: index === 0 ? 'none' : `1px solid ${BORDER}`, background: index % 2 === 0 ? '#FFFFFF' : '#FAFAF8' }}>
+                    <span style={{ color: '#9B9590', fontSize: 11, fontWeight: 900, letterSpacing: 0.8, textTransform: 'uppercase' }}>{label}</span>
+                    <span style={{ color: label === 'Status' ? GREEN : '#0D0D0D', fontSize: 13, fontWeight: label === 'Reference' || label === 'Receipt ID' ? 800 : 650, fontFamily: label === 'Reference' || label === 'Receipt ID' ? 'monospace' : 'inherit', wordBreak: 'break-word' }}>{value}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ background: `${GOLD}10`, border: `1px solid ${GOLD}33`, borderRadius: 10, padding: 13 }}>
+                <p style={{ margin: 0, color: '#5C5750', fontSize: 12, lineHeight: 1.6 }}>
+                  This receipt confirms that the payment above has been recorded for {mockData.student.name}. Please keep this reference for school fee reconciliation.
+                </p>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  type='button'
+                  onClick={() => setSelectedReceipt(null)}
+                  style={{ border: `1px solid ${BORDER}`, color: '#5C5750', background: '#FFFFFF', fontSize: 12, padding: '9px 14px', borderRadius: 8, fontWeight: 800, cursor: 'pointer' }}
+                >
+                  Close
+                </button>
+                <a
+                  href={`/api/payments/${encodeURIComponent(selectedReceipt.id || selectedReceipt.ref)}/receipt`}
+                  download
+                  style={{ border: 'none', color: '#0D0D0D', background: GOLD, fontSize: 12, padding: '10px 15px', borderRadius: 8, fontWeight: 900, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                >
+                  Download Receipt
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <PayStackModal
         isOpen={isPaymentOpen}
         onClose={() => setIsPaymentOpen(false)}
@@ -411,7 +584,6 @@ export function Fees() {
   )
 }
 export function Attendance() {
-  const [view, setView] = useState<'weeks' | 'report'>('weeks')
   const att = mockData.student.attendance
   const [selectedWeekStart, setSelectedWeekStart] = useState(att[0]?.weekStart || '')
   const selectedWeek = att.find((item) => item.weekStart === selectedWeekStart) || att[0]
@@ -420,6 +592,12 @@ export function Attendance() {
   const totalAbsent = totalSchoolDays - totalPresent
   const presentWeeks = att.filter((item) => item.status === 'present').length
   const overall = totalSchoolDays > 0 ? Math.round((totalPresent / totalSchoolDays) * 100) : 0
+  const chartData = att.map((item) => ({
+    absent: Math.max(item.schoolDays - item.daysPresent, 0),
+    present: item.daysPresent,
+    rate: item.schoolDays > 0 ? Math.round((item.daysPresent / item.schoolDays) * 100) : 0,
+    week: item.week.replace('Week ', 'W'),
+  }))
   const formatWeekDate = (value: string) => new Date(value).toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' })
   const statusColor = (status: string) => (status === 'present' ? GREEN : RED)
 
@@ -455,55 +633,33 @@ export function Attendance() {
             ))}
           </select>
         </label>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {['weeks', 'report'].map((item) => (
-          <button
-            key={item}
-            onClick={() => setView(item as 'weeks' | 'report')}
-            style={{
-              padding: '7px 18px',
-              borderRadius: 7,
-              background: view === item ? GOLD : '#FFFFFF',
-              border: `1px solid ${view === item ? GOLD : BORDER}`,
-              color: view === item ? '#0D0D0D' : '#5C5750',
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            {item === 'weeks' ? 'All Weeks' : 'Selected Week Report'}
-          </button>
-        ))}
+        <div style={{ display: 'grid', gap: 2, textAlign: 'right' }}>
+          <span style={{ color: '#9B9590', fontSize: 10, fontWeight: 900, letterSpacing: 0.8, textTransform: 'uppercase' }}>Selected Report</span>
+          <span style={{ color: '#0D0D0D', fontSize: 13, fontWeight: 850 }}>{selectedWeek.week}</span>
         </div>
       </Card>
-      {view === 'weeks' ? (
-        <div style={{ display: 'grid', gap: 10 }}>
-          {att.map((item) => {
-            const pct = Math.round((item.daysPresent / item.schoolDays) * 100)
-            const color = statusColor(item.status)
-            return (
-              <Card key={item.weekStart} style={{ padding: '14px 18px', borderColor: selectedWeekStart === item.weekStart ? `${GOLD}88` : BORDER }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
-                  <div>
-                    <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#0D0D0D' }}>{item.week}</p>
-                    <p style={{ margin: '3px 0 0', fontSize: 12, color: '#9B9590' }}>{formatWeekDate(item.weekStart)} to {formatWeekDate(item.weekEnd)}</p>
-                  </div>
-                  <span style={{ fontSize: 14, fontWeight: 800, color, fontFamily: 'monospace' }}>{pct}%</span>
-                </div>
-                <div style={{ height: 5, background: BORDER, borderRadius: 3, marginBottom: 8 }}>
-                  <div style={{ height: 5, borderRadius: 3, width: `${pct}%`, background: color }} />
-                </div>
-                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 12, color: GREEN }}>Present: {item.daysPresent}</span>
-                  <span style={{ fontSize: 12, color: RED }}>Absent: {item.schoolDays - item.daysPresent}</span>
-                  <span style={{ fontSize: 12, color: '#9B9590' }}>Total: {item.schoolDays} school days</span>
-                  <span style={{ fontSize: 12, color, fontWeight: 700, textTransform: 'capitalize' }}>{item.status}</span>
-                </div>
-              </Card>
-            )
-          })}
+
+      <Card style={{ marginBottom: 16 }}>
+        <CardLabel>Weekly Attendance Bar Chart</CardLabel>
+        <div style={{ height: 280, width: '100%' }}>
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: -22 }}>
+              <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#5C5750' }} />
+              <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#9B9590' }} />
+              <Tooltip
+                cursor={{ fill: '#F6F1E6' }}
+                formatter={(value, name) => [name === 'rate' ? `${value}%` : `${value} days`, name === 'present' ? 'Present' : name === 'absent' ? 'Absent' : 'Rate']}
+                labelStyle={{ color: '#0D0D0D', fontWeight: 800 }}
+                contentStyle={{ border: `1px solid ${BORDER}`, borderRadius: 8, boxShadow: '0 8px 18px rgba(13,13,13,0.10)' }}
+              />
+              <Bar dataKey="present" fill={GREEN} radius={[5, 5, 0, 0]} name="Present" />
+              <Bar dataKey="absent" fill={RED} radius={[5, 5, 0, 0]} name="Absent" />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
-      ) : selectedWeek ? (
+      </Card>
+
+      {selectedWeek ? (
         <Card>
           <CardLabel>{selectedWeek.week} Attendance Report</CardLabel>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12, marginBottom: 16 }}>
@@ -1600,7 +1756,7 @@ export function ParentSwitch({ activeChild, setActiveChild }: { activeChild: num
         <CardLabel>Quick Summary — {mockData.children[activeChild].name}</CardLabel>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
           <StatCard label='Class' value={mockData.children[activeChild].class} sub={mockData.children[activeChild].level} color={GOLD} />
-          <StatCard label='Attendance' value='87%' sub='This term' color={GREEN} />
+          <AttendanceBarChart compact />
           <StatCard label='Fees Due' value='₦35k' sub='Balance' color={RED} />
           <StatCard label='Position' value='4th' sub='In class' color={BLUE} />
         </div>

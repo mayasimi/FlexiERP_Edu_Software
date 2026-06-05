@@ -246,10 +246,26 @@ export default function ReportCardPage() {
 
       <style jsx global>{`
         @media print {
-          .sidebar, .topbar, .page-header, button { display: none !important; }
+          body { background: white !important; }
+          body * { visibility: hidden !important; }
+          #report-card, #report-card * { visibility: visible !important; }
+          #report-card {
+            position: absolute !important;
+            inset: 0 auto auto 0 !important;
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+          }
+          #report-card button,
+          .sidebar,
+          .topbar,
+          .page-header,
+          button {
+            display: none !important;
+          }
           .main-content { margin-left: 0 !important; }
-          #report-card { box-shadow: none !important; border: none !important; }
-          body { background: white; }
         }
       `}</style>
     </AppLayout>
