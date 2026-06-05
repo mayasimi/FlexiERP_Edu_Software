@@ -5,6 +5,7 @@ import Topbar from '@/components/layout/Topbar'
 import { adminMockDb } from '@/lib/admin-mock-db'
 import { MapPin, Sparkles, X } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { getClassLevelsFromDirectory, getSectionsFromDirectory } from '@/lib/utils'
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const
 type Day = typeof DAYS[number]
@@ -30,25 +31,77 @@ type TimetableCell = {
 
 type TimetableByKey = Record<string, Record<Day, Partial<Record<Time, TimetableCell>>>>
 
+type ClassNode = { id: string; name: string; sections: Array<{ id: string; name: string }> }
+
+const DEFAULT_CLASSES = adminMockDb.academic_classes.map((c) => c.name.replace(/^Class\s+/i, 'Grade '))
+
+const normalizeKey = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+
 export default function TimetablePage() {
-  const classes = adminMockDb.academic_classes
-  const sections = adminMockDb.academic_sections
-
   const [activeDay, setActiveDay] = useState<Day>('Monday')
-  const [cls, setCls] = useState<string>(classes[0]?.id ?? 'c10')
-  const [section, setSection] = useState<string>(() => {
-    const first = sections.find((s) => s.class_id === (classes[0]?.id ?? 'c10'))
-    return first?.id ?? 's10a'
-  })
-
-  const key = useMemo(() => `${cls}:${section}`, [cls, section])
   const [hasMounted, setHasMounted] = useState(false)
+  const [cls, setCls] = useState<string>('')
+  const [section, setSection] = useState<string>('')
   const [subjectsByKey, setSubjectsByKey] = useState<Record<string, Subject[]>>({})
   const [timetableByKey, setTimetableByKey] = useState<TimetableByKey>({})
 
   useEffect(() => {
     setHasMounted(true)
   }, [])
+
+  const classes = useMemo<ClassNode[]>(() => {
+    const fallback: ClassNode[] = adminMockDb.academic_classes.map((c) => ({
+      id: c.id,
+      name: c.name,
+      sections: adminMockDb.academic_sections.filter((s) => s.class_id === c.id).map((s) => ({ id: s.id, name: s.name })),
+    }))
+
+    if (!hasMounted) return fallback
+
+    const levels = getClassLevelsFromDirectory(DEFAULT_CLASSES)
+    if (!levels.length) return fallback
+
+    const out: ClassNode[] = []
+    for (const level of levels) {
+      const m = String(level).match(/(\d+)/)
+      const classId = m ? `c${m[1]}` : `c_${normalizeKey(level)}`
+      const secNames = getSectionsFromDirectory(level)
+      const sections =
+        secNames.length > 0
+          ? secNames.map((secName) => {
+              const matchLetter = String(secName).match(/section\s+([a-z])\b/i)
+              if (m && matchLetter) {
+                const letter = matchLetter[1].toLowerCase()
+                return { id: `s${m[1]}${letter}`, name: `Section ${letter.toUpperCase()}` }
+              }
+              return { id: `s_${normalizeKey(`${level}_${secName}`)}`, name: secName }
+            })
+          : [{ id: `s_${normalizeKey(`${level}_section_a`)}`, name: 'Section A' }]
+
+      out.push({ id: classId, name: level, sections })
+    }
+    return out.length ? out : fallback
+  }, [hasMounted])
+
+  const currentClass = useMemo(() => classes.find((c) => c.id === cls) ?? null, [classes, cls])
+
+  useEffect(() => {
+    if (!classes.length) return
+    setCls((prev) => (classes.some((c) => c.id === prev) ? prev : classes[0].id))
+  }, [classes])
+
+  useEffect(() => {
+    const current = classes.find((c) => c.id === cls)
+    if (!current) return
+    setSection((prev) => (current.sections.some((s) => s.id === prev) ? prev : current.sections[0]?.id ?? ''))
+  }, [classes, cls])
+
+  const key = useMemo(() => `${cls}:${section}`, [cls, section])
 
   useEffect(() => {
     if (!hasMounted) return
@@ -81,12 +134,6 @@ export default function TimetablePage() {
       // ignore
     }
   }, [hasMounted, timetableByKey])
-
-  useEffect(() => {
-    const first = sections.find((s) => s.class_id === cls)
-    if (!first) return
-    setSection((prev) => (sections.some((s) => s.class_id === cls && s.id === prev) ? prev : first.id))
-  }, [cls, sections])
 
   const availableSubjects = subjectsByKey[key] ?? []
 
@@ -193,7 +240,7 @@ export default function TimetablePage() {
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Section</label>
                 <select value={section} onChange={e => setSection(e.target.value)} className="select w-48">
-                  {sections.filter((s) => s.class_id === cls).map((s) => (
+                  {(currentClass?.sections ?? []).map((s) => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>

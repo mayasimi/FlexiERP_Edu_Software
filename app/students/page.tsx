@@ -2,9 +2,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import Topbar from '@/components/layout/Topbar'
-import { getInitials } from '@/lib/utils'
+import { getClassLevelsFromDirectory, getInitials, getSectionsFromDirectory } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import { ChevronLeft, ChevronRight, Download, Eye, Image as ImageIcon, Pencil, Trash2, Upload, X } from 'lucide-react'
+
+const DEFAULT_CLASS_LEVELS = ['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12']
 
 const MOCK_STUDENTS = {
   data: [
@@ -92,10 +94,12 @@ const downloadText = (filename: string, text: string, mime = 'text/plain;charset
 }
 
 export default function StudentsPage() {
+  const [hasMounted, setHasMounted] = useState(false)
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [grade, setGrade] = useState('')
   const [status, setStatus] = useState('')
+  const [classLevels, setClassLevels] = useState<string[]>(DEFAULT_CLASS_LEVELS)
 
   const [students, setStudents] = useState<Student[]>(() =>
     MOCK_STUDENTS.data.map((s) => ({
@@ -142,6 +146,13 @@ export default function StudentsPage() {
     if (page !== pageSafe) setPage(pageSafe)
   }, [page, pageSafe])
 
+  useEffect(() => setHasMounted(true), [])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    setClassLevels(getClassLevelsFromDirectory(DEFAULT_CLASS_LEVELS))
+  }, [hasMounted])
+
   const [showForm, setShowForm] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
   const [activeStudentId, setActiveStudentId] = useState<string | null>(null)
@@ -168,6 +179,18 @@ export default function StudentsPage() {
   const [formMedicalNotes, setFormMedicalNotes] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const csvRef = useRef<HTMLInputElement>(null)
+
+  const formSectionOptions = useMemo(() => {
+    if (!hasMounted || !formGrade) return ['Section A', 'Section B', 'Section C']
+    const fromDir = getSectionsFromDirectory(formGrade)
+    return fromDir.length ? fromDir : ['Section A', 'Section B', 'Section C']
+  }, [formGrade, hasMounted])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    if (!formGrade) return
+    setFormSection((prev) => (formSectionOptions.includes(prev) ? prev : ''))
+  }, [formGrade, formSectionOptions, hasMounted])
 
   const studentCsvHeaders = useMemo(
     () => [
@@ -625,7 +648,7 @@ export default function StudentsPage() {
                    className="input w-56" />
             <select value={grade} onChange={e => setGrade(e.target.value)} className="select w-36">
               <option value="">All Grades</option>
-              {['Grade 9','Grade 10','Grade 11','Grade 12'].map(g => <option key={g}>{g}</option>)}
+              {classLevels.map((g) => <option key={g}>{g}</option>)}
             </select>
             <select value={status} onChange={e => setStatus(e.target.value)} className="select w-36">
               <option value="">All Status</option>
@@ -1008,7 +1031,7 @@ export default function StudentsPage() {
                   <label className="label">Grade</label>
                   <select value={formGrade} onChange={(e) => setFormGrade(e.target.value)} className="select">
                     <option value="">Select Grade</option>
-                    {['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'].map((g) => (
+                    {classLevels.map((g) => (
                       <option key={g} value={g}>{g}</option>
                     ))}
                   </select>
@@ -1017,7 +1040,7 @@ export default function StudentsPage() {
                   <label className="label">Section</label>
                   <select value={formSection} onChange={(e) => setFormSection(e.target.value)} className="select">
                     <option value="">Select Section</option>
-                    {['Section A', 'Section B', 'Section C'].map((s) => (
+                    {formSectionOptions.map((s) => (
                       <option key={s} value={s}>{s}</option>
                     ))}
                   </select>

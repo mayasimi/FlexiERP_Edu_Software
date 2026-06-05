@@ -1,7 +1,8 @@
 'use client'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { NavItem, PageType, RoleType } from './portalTypes'
 import { NAV, PARENT_NAV } from './portalData'
+import { getActiveTermLabel } from '@/lib/utils'
 
 interface SidebarProps {
   page: PageType
@@ -12,6 +13,11 @@ interface SidebarProps {
 
 export default function PortalSidebar({ page, role, setPage, setRole }: SidebarProps) {
   const allNav: NavItem[] = useMemo(() => (role === 'parent' ? [...PARENT_NAV, ...NAV] : NAV), [role])
+  const [termLabel, setTermLabel] = useState('')
+
+  useEffect(() => {
+    setTermLabel(getActiveTermLabel(''))
+  }, [])
 
   return (
     <div style={{ width: 240, background: '#161616', borderRight: '1px solid #222', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
@@ -122,7 +128,7 @@ export default function PortalSidebar({ page, role, setPage, setRole }: SidebarP
       <div style={{ padding: '14px 16px', borderTop: '1px solid #222' }}>
         <div style={{ background: '#C9A02020', border: '1px solid #C9A02033', borderRadius: 8, padding: '8px 12px' }}>
           <p style={{ margin: '0 0 2px', fontSize: 10, color: '#C9A020', letterSpacing: 1, fontFamily: 'monospace', textTransform: 'uppercase' }}>Current Term</p>
-          <p style={{ margin: 0, fontSize: 12, color: '#F5F0E8', fontWeight: 600 }}>2nd Term · 2025/2026</p>
+          <p style={{ margin: 0, fontSize: 12, color: '#F5F0E8', fontWeight: 600 }}>{termLabel || 'Current Term'}</p>
         </div>
       </div>
     </div>

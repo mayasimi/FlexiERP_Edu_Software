@@ -1,10 +1,11 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import {
   LayoutDashboard, ClipboardCheck, CalendarDays, FileText,
   Users, BarChart3, LogOut, BookOpen, MessageCircle
 } from 'lucide-react'
+import { getActiveTermLabel } from '@/lib/utils'
 import type { Section } from './_types'
 import DashboardSection from './_sections/DashboardSection'
 import AttendanceSection from './_sections/AttendanceSection'
@@ -27,9 +28,18 @@ const sidebarItems: { id: Section; label: string; icon: typeof LayoutDashboard }
 
 export default function InstructorDashboardPage() {
   const [activeSection, setActiveSection] = useState<Section>('dashboard')
-  const [assessmentOpen, setAssessmentOpen] = useState(true)
+  const [assessmentOpen, setAssessmentOpen] = useState(false)
+  const [termLabel, setTermLabel] = useState<string>('')
 
   const isAssessmentActive = activeSection === 'assessment-input' || activeSection === 'assessment-view'
+
+  useEffect(() => {
+    setTermLabel(getActiveTermLabel(''))
+  }, [])
+
+  useEffect(() => {
+    if (isAssessmentActive) setAssessmentOpen(true)
+  }, [isAssessmentActive])
 
   return (
     <div className="flex min-h-screen" style={{ background: '#F7F6F3' }}>
@@ -45,7 +55,7 @@ export default function InstructorDashboardPage() {
         <div className="px-4 py-2.5">
           <div className="rounded-lg px-3 py-2 text-xs font-medium"
             style={{ background: 'rgba(201,160,32,0.10)', color: '#C9A020', border: '1px solid rgba(201,160,32,0.2)' }}>
-            📅 2026 – Spring Term
+            📅 {termLabel || 'Current Term'}
           </div>
         </div>
 
@@ -101,9 +111,11 @@ export default function InstructorDashboardPage() {
                 border: isAssessmentActive ? '1px solid rgba(201,160,32,0.30)' : '1px solid transparent',
               }}
             >
-              <FileText size={16} />
-              <span className="flex-1">Assessment</span>
-              <span style={{ transform: assessmentOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease', opacity: 0.8 }}>
+              <span className="flex items-center gap-3">
+                <FileText size={16} />
+                <span>Assessment</span>
+              </span>
+              <span className="ml-auto" style={{ transform: assessmentOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease', opacity: 0.8 }}>
                 ▶
               </span>
             </button>

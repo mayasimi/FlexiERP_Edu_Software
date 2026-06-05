@@ -7,6 +7,7 @@ import { academicsApi } from '@/lib/api'
 import { adminMockDb } from '@/lib/admin-mock-db'
 import { FolderOpen, Pencil, Plus, Trash2, Trophy, User, X } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { getClassLevelsFromDirectory, getSectionsFromDirectory } from '@/lib/utils'
 
 const MOCK_CLASSES = [
   { id: 'c10', name: 'Class 10', sections: [{ id: 's10a', name: 'Section A' }, { id: 's10b', name: 'Section B' }] },
@@ -31,29 +32,77 @@ type Subject = {
   max_marks: string
 }
 
+type ClassNode = { id: string; name: string; sections: Array<{ id: string; name: string }> }
+
+const DEFAULT_CLASSES = MOCK_CLASSES.map((c) => c.name.replace(/^Class\s+/i, 'Grade '))
+
+const normalizeKey = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+
 export default function AcademicsPage() {
+  const [hasMounted, setHasMounted] = useState(false)
   const [selectedClass, setSelectedClass] = useState('c10')
   const [selectedSection, setSelectedSection] = useState('s10a')
 
-  const { data: classes = MOCK_CLASSES } = useQuery({
+  const { data: classesFromApi = MOCK_CLASSES } = useQuery({
     queryKey: ['classes'],
-    queryFn: () => academicsApi.getClasses().then(r => r.data),
+    queryFn: () => academicsApi.getClasses().then((r) => r.data),
     placeholderData: MOCK_CLASSES,
   })
-
-  const currentClass = classes.find((c: typeof MOCK_CLASSES[0]) => c.id === selectedClass)
-  const currentSectionName =
-    currentClass?.sections.find((s: typeof MOCK_CLASSES[0]['sections'][0]) => s.id === selectedSection)?.name
-
-  const key = useMemo(() => `${selectedClass}:${selectedSection}`, [selectedClass, selectedSection])
-  const [hasMounted, setHasMounted] = useState(false)
-  const [subjectsByKey, setSubjectsByKey] = useState<Record<string, Subject[]>>(() => ({
-    ['c10:s10a']: MOCK_SUBJECTS.map((s) => ({ ...s })),
-  }))
 
   useEffect(() => {
     setHasMounted(true)
   }, [])
+
+  const classes = useMemo<ClassNode[]>(() => {
+    if (!hasMounted) return classesFromApi as unknown as ClassNode[]
+    const levels = getClassLevelsFromDirectory(DEFAULT_CLASSES)
+    if (!levels.length) return classesFromApi as unknown as ClassNode[]
+
+    const out: ClassNode[] = []
+    for (const level of levels) {
+      const m = String(level).match(/(\d+)/)
+      const classId = m ? `c${m[1]}` : `c_${normalizeKey(level)}`
+      const secNames = getSectionsFromDirectory(level)
+      const sections =
+        secNames.length > 0
+          ? secNames.map((secName) => {
+              const matchLetter = String(secName).match(/section\s+([a-z])\b/i)
+              if (m && matchLetter) {
+                const letter = matchLetter[1].toLowerCase()
+                return { id: `s${m[1]}${letter}`, name: `Section ${letter.toUpperCase()}` }
+              }
+              return { id: `s_${normalizeKey(`${level}_${secName}`)}`, name: secName }
+            })
+          : [{ id: `s_${normalizeKey(`${level}_section_a`)}`, name: 'Section A' }]
+
+      out.push({ id: classId, name: level, sections })
+    }
+    return out.length ? out : (classesFromApi as unknown as ClassNode[])
+  }, [classesFromApi, hasMounted])
+
+  useEffect(() => {
+    if (!classes.length) return
+    setSelectedClass((prev) => (classes.some((c) => c.id === prev) ? prev : classes[0].id))
+  }, [classes])
+
+  useEffect(() => {
+    const current = classes.find((c) => c.id === selectedClass)
+    if (!current) return
+    setSelectedSection((prev) => (current.sections.some((s) => s.id === prev) ? prev : current.sections[0]?.id ?? ''))
+  }, [classes, selectedClass])
+
+  const currentClass = classes.find((c) => c.id === selectedClass)
+  const currentSectionName = currentClass?.sections.find((s) => s.id === selectedSection)?.name
+
+  const key = useMemo(() => `${selectedClass}:${selectedSection}`, [selectedClass, selectedSection])
+  const [subjectsByKey, setSubjectsByKey] = useState<Record<string, Subject[]>>(() => ({
+    ['c10:s10a']: MOCK_SUBJECTS.map((s) => ({ ...s })),
+  }))
 
   useEffect(() => {
     if (!hasMounted) return
@@ -203,7 +252,7 @@ export default function AcademicsPage() {
           <div className="card w-56 flex-shrink-0 animate-in stagger-1 h-fit">
             <h3 className="font-bold mb-4">Class Structure</h3>
             <div className="space-y-1">
-              {classes.map((cls: typeof MOCK_CLASSES[0]) => (
+              {classes.map((cls) => (
                 <div key={cls.id}>
                   <button
                     onClick={() => { setSelectedClass(cls.id); setSelectedSection(cls.sections[0]?.id) }}
@@ -211,7 +260,7 @@ export default function AcademicsPage() {
                     <FolderOpen size={14} style={{ color: '#6B6660' }} />
                     <span className="font-medium">{cls.name}</span>
                   </button>
-                  {selectedClass === cls.id && cls.sections.map((sec: typeof MOCK_CLASSES[0]['sections'][0]) => (
+                  {selectedClass === cls.id && cls.sections.map((sec) => (
                     <button key={sec.id}
                       onClick={() => setSelectedSection(sec.id)}
                       className="flex items-center gap-2 w-full pl-7 py-1.5 rounded-lg text-sm text-left transition-all"

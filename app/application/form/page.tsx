@@ -3,15 +3,138 @@
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useRouter } from 'next/navigation'
-import { Suspense, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { ChevronLeft, Upload } from 'lucide-react'
+
+const NIGERIA_STATES = [
+  'Abia',
+  'Adamawa',
+  'Akwa Ibom',
+  'Anambra',
+  'Bauchi',
+  'Bayelsa',
+  'Benue',
+  'Borno',
+  'Cross River',
+  'Delta',
+  'Ebonyi',
+  'Edo',
+  'Ekiti',
+  'Enugu',
+  'Gombe',
+  'Imo',
+  'Jigawa',
+  'Kaduna',
+  'Kano',
+  'Katsina',
+  'Kebbi',
+  'Kogi',
+  'Kwara',
+  'Lagos',
+  'Nasarawa',
+  'Niger',
+  'Ogun',
+  'Ondo',
+  'Osun',
+  'Oyo',
+  'Plateau',
+  'Rivers',
+  'Sokoto',
+  'Taraba',
+  'Yobe',
+  'Zamfara',
+] as const
+
+type LgaMap = Record<string, string[]>
+const LGA_STORAGE_KEY = 'edu_ng_states_lgas_v1'
+const LGA_SOURCE_URL = '/api/ng/lgas'
+const LGA_FALLBACK_URL =
+  'https://gist.github.com/devhammed/0bb9eeac9ff22c895100d072f489dc98/raw/a7b19911407a89947c452339fee59f9335dc8225/nigeria-state-and-lgas.json'
+
+const normalizeKey = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
 
 function ApplicationFormInner() {
   const [submitting, setSubmitting] = useState(false)
   const searchParams = useSearchParams()
   const router = useRouter()
   const backTo = searchParams.get('from') || '/application'
+
+  const [stateOfOrigin, setStateOfOrigin] = useState('')
+  const [lga, setLga] = useState('')
+  const [lgaMap, setLgaMap] = useState<LgaMap>({})
+  const [lgaLoading, setLgaLoading] = useState(false)
+  const [lgaLoadError, setLgaLoadError] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const load = async () => {
+      try {
+        if (typeof window === 'undefined') return
+        const cached = window.localStorage.getItem(LGA_STORAGE_KEY)
+        if (cached) {
+          const parsed = JSON.parse(cached) as LgaMap
+          if (!cancelled && parsed && typeof parsed === 'object') {
+            const normalized: LgaMap = {}
+            for (const [k, v] of Object.entries(parsed)) {
+              if (!Array.isArray(v)) continue
+              normalized[normalizeKey(k)] = v
+            }
+            if (Object.keys(normalized).length >= 10) {
+              setLgaMap(normalized)
+              setLgaLoadError(false)
+              return
+            }
+          }
+        }
+
+        setLgaLoadError(false)
+        setLgaLoading(true)
+        const res = await fetch(LGA_SOURCE_URL)
+        const res2 = !res.ok ? await fetch(LGA_FALLBACK_URL) : null
+        const finalRes = res.ok ? res : res2
+        if (!finalRes || !finalRes.ok) throw new Error('Failed to fetch LGA list')
+        const data = (await finalRes.json()) as Array<{ state?: string; lgas?: unknown }>
+        const next: LgaMap = {}
+        for (const item of data) {
+          const st = (item?.state ?? '').toString().trim()
+          const lgas = Array.isArray(item?.lgas) ? (item.lgas as unknown[]) : []
+          if (!st) continue
+          next[normalizeKey(st)] = lgas.map((x) => (x ?? '').toString().trim()).filter(Boolean)
+        }
+
+        if (Object.keys(next).length < 10) throw new Error('Invalid LGA response')
+        if (!cancelled) setLgaMap(next)
+        window.localStorage.setItem(LGA_STORAGE_KEY, JSON.stringify(next))
+      } catch {
+        if (!cancelled) {
+          setLgaMap({})
+          setLgaLoadError(true)
+          toast.error('Could not load LGA list. Please refresh and try again.')
+        }
+      } finally {
+        if (!cancelled) setLgaLoading(false)
+      }
+    }
+
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    setLga('')
+  }, [stateOfOrigin])
+
+  const lgaOptions = useMemo(() => lgaMap[normalizeKey(stateOfOrigin)] ?? [], [lgaMap, stateOfOrigin])
+  const canPickLga = Boolean(stateOfOrigin) && !lgaLoading && lgaOptions.length > 0
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -104,6 +227,39 @@ function ApplicationFormInner() {
                     <option>Other</option>
                   </select>
                 </div>
+                <div>
+                  <label className="label">State of Origin</label>
+                  <select name="state" className="select" required value={stateOfOrigin} onChange={(e) => setStateOfOrigin(e.target.value)}>
+                    <option value="">Select State</option>
+                    {NIGERIA_STATES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Local Government Area (LGA)</label>
+                  <select
+                    name="lga"
+                    className="select"
+                    required
+                    value={lga}
+                    onChange={(e) => setLga(e.target.value)}
+                    disabled={!canPickLga}
+                  >
+                    {!stateOfOrigin ? (
+                      <option value="">Select State first</option>
+                    ) : lgaLoading ? (
+                      <option value="">Loading LGAs…</option>
+                    ) : lgaOptions.length === 0 ? (
+                      <option value="">{lgaLoadError ? 'Could not load LGAs' : 'No LGAs available'}</option>
+                    ) : (
+                      <option value="">Select LGA</option>
+                    )}
+                    {lgaOptions.map((x) => (
+                      <option key={x} value={x}>{x}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -142,11 +298,11 @@ function ApplicationFormInner() {
             <div>
               <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
                 <span className="w-1.5 h-6 rounded-full" style={{ background: '#C9A020' }} />
-                Guardian Information
+                Parent/Guardian Information
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="label">Guardian Full Name</label>
+                  <label className="label">Parent/Guardian Full Name</label>
                   <input type="text" name="guardianName" className="input" placeholder="e.g. Jane Doe" required />
                 </div>
                 <div>

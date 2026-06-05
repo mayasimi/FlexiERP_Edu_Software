@@ -1,13 +1,14 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { AlertCircle, Award, Bell, BookMarked, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock, Download, Printer, Target, TrendingUp, UserRound } from 'lucide-react'
+import { AlertCircle, Award, Bell, BookMarked, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock, Download, Megaphone, Printer, Target, TrendingUp, UserRound, X } from 'lucide-react'
 import type { FeeItem } from '@/components/payment/PayStackModal'
 import { escapeHtml } from '@/lib/security'
 import { mockData, getGrade, GOLD, BORDER, BLUE, GREEN, RED } from './portalData'
 import { Avatar, Card, CardLabel, GoldBadge, StatCard } from './portalUi'
 import { RoleType } from './portalTypes'
+import { getNoticesForRole, type NoticeItem } from '@/lib/utils'
 
 const PayStackModal = dynamic(() => import('@/components/payment/PayStackModal'), { ssr: false })
 
@@ -59,6 +60,25 @@ function printElementById(elementId: string, title: string) {
 export function Dashboard({ role }: { role: RoleType }) {
   const d = mockData.student
   const [showTeacherContact, setShowTeacherContact] = useState(false)
+  const [schoolNotices, setSchoolNotices] = useState<NoticeItem[]>([])
+  const [showAllNoticesModal, setShowAllNoticesModal] = useState(false)
+  const [showNoticeViewModal, setShowNoticeViewModal] = useState(false)
+  const [selectedNoticeId, setSelectedNoticeId] = useState<string | null>(null)
+
+  const selectedNotice = useMemo(() => {
+    if (!selectedNoticeId) return null
+    return schoolNotices.find((n) => n.id === selectedNoticeId) ?? null
+  }, [schoolNotices, selectedNoticeId])
+
+  useEffect(() => {
+    setSchoolNotices(getNoticesForRole(role === 'parent' ? 'parent' : 'student', []))
+  }, [role])
+
+  const openNoticeView = (id: string) => {
+    setSelectedNoticeId(id)
+    setShowNoticeViewModal(true)
+  }
+
   const totalFeesDue = d.fees.structure.reduce((sum, fee) => sum + fee.amount, 0)
   const avgAtt = Math.round(
     d.attendance.reduce((sum, item) => sum + (item.present / item.total) * 100, 0) / d.attendance.length,
@@ -172,6 +192,143 @@ export function Dashboard({ role }: { role: RoleType }) {
           })}
         </Card>
       </div>
+
+      <div style={{ marginTop: 16 }}>
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: `${GOLD}16`, border: `1px solid ${GOLD}33`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Megaphone size={16} color={GOLD} />
+              </div>
+              <div>
+                <p style={{ margin: 0, fontSize: 11, color: '#9B9590', letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 600 }}>
+                  School Notices
+                </p>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: '#5C5750' }}>Official updates from the school.</p>
+              </div>
+            </div>
+
+            {schoolNotices.length > 5 ? (
+              <button
+                type="button"
+                onClick={() => setShowAllNoticesModal(true)}
+                style={{ border: 'none', background: 'transparent', color: GOLD, fontWeight: 800, fontSize: 12, cursor: 'pointer' }}
+              >
+                View all
+              </button>
+            ) : null}
+          </div>
+
+          {schoolNotices.length === 0 ? (
+            <p style={{ margin: 0, color: '#5C5750', fontSize: 13 }}>No notices yet.</p>
+          ) : (
+            <div style={{ display: 'grid', gap: 10 }}>
+              {schoolNotices.slice(0, 5).map((notice) => (
+                <button
+                  key={notice.id}
+                  type="button"
+                  onClick={() => openNoticeView(notice.id)}
+                  style={{
+                    border: `1px solid ${BORDER}`,
+                    borderLeft: notice.highlight ? `4px solid ${GOLD}` : `1px solid ${BORDER}`,
+                    background: notice.highlight ? `${GOLD}10` : '#FFFFFF',
+                    borderRadius: 12,
+                    padding: '12px 12px',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ margin: 0, color: '#0D0D0D', fontSize: 14, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{notice.title}</p>
+                      <p style={{ margin: '4px 0 0', color: GOLD, fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 900 }}>{notice.audience}</p>
+                    </div>
+                    <span style={{ color: '#9B9590', fontSize: 11, whiteSpace: 'nowrap' }}>{notice.date}</span>
+                  </div>
+                  <p style={{ margin: '8px 0 0', color: '#5C5750', fontSize: 13, lineHeight: 1.5 }}>{notice.body}</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {showAllNoticesModal ? (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,13,13,0.55)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ width: 'min(980px, 100%)', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', background: '#FFFFFF', borderRadius: 14, border: `1px solid ${BORDER}`, boxShadow: '0 18px 44px rgba(13,13,13,0.18)' }}>
+            <div style={{ padding: '16px 16px', borderBottom: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <div>
+                <p style={{ margin: 0, color: GOLD, fontSize: 10, fontWeight: 900, letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'monospace' }}>School Notices</p>
+                <h3 style={{ margin: '6px 0 0', color: '#0D0D0D', fontSize: 18, fontWeight: 900 }}>All Notices</h3>
+              </div>
+              <button type="button" onClick={() => setShowAllNoticesModal(false)} style={{ border: `1px solid ${BORDER}`, background: '#FFFFFF', borderRadius: 10, padding: 8, cursor: 'pointer' }}>
+                <X size={16} color="#0D0D0D" />
+              </button>
+            </div>
+
+            <div style={{ padding: 16, display: 'grid', gap: 10 }}>
+              {schoolNotices.map((notice) => (
+                <button
+                  key={notice.id}
+                  type="button"
+                  onClick={() => openNoticeView(notice.id)}
+                  style={{
+                    border: `1px solid ${BORDER}`,
+                    borderLeft: notice.highlight ? `4px solid ${GOLD}` : `1px solid ${BORDER}`,
+                    background: notice.highlight ? `${GOLD}10` : '#FFFFFF',
+                    borderRadius: 12,
+                    padding: '12px 12px',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ margin: 0, color: '#0D0D0D', fontSize: 14, fontWeight: 800 }}>{notice.title}</p>
+                      <p style={{ margin: '4px 0 0', color: GOLD, fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 900 }}>{notice.audience}</p>
+                    </div>
+                    <span style={{ color: '#9B9590', fontSize: 11, whiteSpace: 'nowrap' }}>{notice.date}</span>
+                  </div>
+                  <p style={{ margin: '8px 0 0', color: '#5C5750', fontSize: 13, lineHeight: 1.5 }}>{notice.body}</p>
+                </button>
+              ))}
+            </div>
+
+            <div style={{ padding: 16, borderTop: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setShowAllNoticesModal(false)} style={{ border: `1px solid ${BORDER}`, background: '#FFFFFF', borderRadius: 999, padding: '10px 14px', cursor: 'pointer', fontWeight: 800, color: '#0D0D0D' }}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showNoticeViewModal && selectedNotice ? (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(13,13,13,0.55)', zIndex: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ width: 'min(860px, 100%)', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', background: '#FFFFFF', borderRadius: 14, border: `1px solid ${BORDER}`, boxShadow: '0 18px 44px rgba(13,13,13,0.18)' }}>
+            <div style={{ padding: '16px 16px', borderBottom: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ margin: 0, color: GOLD, fontSize: 10, fontWeight: 900, letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'monospace' }}>{selectedNotice.audience}</p>
+                <h3 style={{ margin: '6px 0 0', color: '#0D0D0D', fontSize: 20, fontWeight: 900, wordBreak: 'break-word' }}>{selectedNotice.title}</h3>
+                <p style={{ margin: '6px 0 0', color: '#9B9590', fontSize: 11 }}>{selectedNotice.date}</p>
+              </div>
+              <button type="button" onClick={() => setShowNoticeViewModal(false)} style={{ border: `1px solid ${BORDER}`, background: '#FFFFFF', borderRadius: 10, padding: 8, cursor: 'pointer' }}>
+                <X size={16} color="#0D0D0D" />
+              </button>
+            </div>
+            <div style={{ padding: 16 }}>
+              <p style={{ margin: 0, color: '#5C5750', fontSize: 14, lineHeight: 1.75, whiteSpace: 'pre-wrap' }}>{selectedNotice.body}</p>
+            </div>
+            <div style={{ padding: 16, borderTop: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setShowNoticeViewModal(false)} style={{ border: `1px solid ${BORDER}`, background: '#FFFFFF', borderRadius: 999, padding: '10px 14px', cursor: 'pointer', fontWeight: 800, color: '#0D0D0D' }}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -1005,6 +1162,16 @@ export function ReportCard() {
 export function ParentNotifications({ selectedNotificationId }: { selectedNotificationId?: string | null } = {}) {
   const notifications = mockData.parentNotifications
   const selectedNotification = notifications.find((item) => item.id === selectedNotificationId) || null
+  const [schoolNotices, setSchoolNotices] = useState<NoticeItem[]>([])
+  const [showAllNoticesModal, setShowAllNoticesModal] = useState(false)
+  const [showNoticeViewModal, setShowNoticeViewModal] = useState(false)
+  const [selectedNoticeId, setSelectedNoticeId] = useState<string | null>(null)
+
+  const selectedNotice = useMemo(() => {
+    if (!selectedNoticeId) return null
+    return schoolNotices.find((n) => n.id === selectedNoticeId) ?? null
+  }, [schoolNotices, selectedNoticeId])
+
   const highPriority = notifications.filter((item) => item.priority === 'High').length
   const categoryColor: Record<string, string> = {
     Meeting: GOLD,
@@ -1020,11 +1187,81 @@ export function ParentNotifications({ selectedNotificationId }: { selectedNotifi
     element?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [selectedNotificationId])
 
+  useEffect(() => {
+    setSchoolNotices(getNoticesForRole('parent', []))
+  }, [])
+
+  const openNoticeView = (id: string) => {
+    setSelectedNoticeId(id)
+    setShowNoticeViewModal(true)
+  }
+
   return (
     <div>
       <div style={{ marginBottom: 22 }}>
         <h2 style={{ margin: '0 0 4px', fontSize: 22, color: '#0D0D0D', fontFamily: "'Georgia',serif", fontWeight: 400 }}>Parent Notifications</h2>
         <p style={{ margin: 0, fontSize: 13, color: '#5C5750' }}>Important school updates for the Okafor family.</p>
+      </div>
+
+      <div style={{ marginBottom: 18 }}>
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 10, background: `${GOLD}16`, border: `1px solid ${GOLD}33`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Megaphone size={16} color={GOLD} />
+              </div>
+              <div>
+                <p style={{ margin: 0, fontSize: 11, color: '#9B9590', letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 600 }}>
+                  School Notices
+                </p>
+                <p style={{ margin: '2px 0 0', fontSize: 12, color: '#5C5750' }}>Notices sent to students/parents.</p>
+              </div>
+            </div>
+
+            {schoolNotices.length > 5 ? (
+              <button
+                type="button"
+                onClick={() => setShowAllNoticesModal(true)}
+                style={{ border: 'none', background: 'transparent', color: GOLD, fontWeight: 800, fontSize: 12, cursor: 'pointer' }}
+              >
+                View all
+              </button>
+            ) : null}
+          </div>
+
+          {schoolNotices.length === 0 ? (
+            <p style={{ margin: 0, color: '#5C5750', fontSize: 13 }}>No notices yet.</p>
+          ) : (
+            <div style={{ display: 'grid', gap: 10 }}>
+              {schoolNotices.slice(0, 5).map((notice) => (
+                <button
+                  key={notice.id}
+                  type="button"
+                  onClick={() => openNoticeView(notice.id)}
+                  style={{
+                    border: `1px solid ${BORDER}`,
+                    borderLeft: notice.highlight ? `4px solid ${GOLD}` : `1px solid ${BORDER}`,
+                    background: notice.highlight ? `${GOLD}10` : '#FFFFFF',
+                    borderRadius: 12,
+                    padding: '12px 12px',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ margin: 0, color: '#0D0D0D', fontSize: 14, fontWeight: 800 }}>{notice.title}</p>
+                      <p style={{ margin: '4px 0 0', color: GOLD, fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 900 }}>{notice.audience}</p>
+                    </div>
+                    <span style={{ color: '#9B9590', fontSize: 11, whiteSpace: 'nowrap' }}>{notice.date}</span>
+                  </div>
+                  <p style={{ margin: '8px 0 0', color: '#5C5750', fontSize: 13, lineHeight: 1.5 }}>{notice.body}</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </Card>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 12, marginBottom: 18 }}>

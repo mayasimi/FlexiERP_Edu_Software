@@ -1,9 +1,10 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import Topbar from '@/components/layout/Topbar'
 import toast from 'react-hot-toast'
 import { X } from 'lucide-react'
+import { getClassLevelsFromDirectory } from '@/lib/utils'
 
 type AttendanceStatus = 'P' | 'A' | 'L' | 'S'
 
@@ -27,9 +28,11 @@ type GradeSetupByClass = Record<string, AttendanceGradeRow[]>
 
 const SCORE_STORAGE_KEY = 'edu_attendance_score_setup_v1'
 const GRADE_STORAGE_KEY = 'edu_attendance_grade_setup_v1'
+const DEFAULT_CLASSES = ['Grade 10', 'Grade 11', 'Grade 12']
 
 export default function AttendancePage() {
   const [selectedClass, setSelectedClass] = useState('Grade 10')
+  const [classLevels, setClassLevels] = useState<string[]>(DEFAULT_CLASSES)
   const setupKey = selectedClass
   const [hasMounted, setHasMounted] = useState(false)
   const [scoreSetupByClass, setScoreSetupByClass] = useState<ScoreSetupByClass>(() => ({
@@ -53,6 +56,13 @@ export default function AttendancePage() {
   useEffect(() => {
     setHasMounted(true)
   }, [])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    const next = getClassLevelsFromDirectory(DEFAULT_CLASSES)
+    setClassLevels(next)
+    setSelectedClass((prev) => (next.includes(prev) ? prev : next[0] || prev))
+  }, [hasMounted])
 
   useEffect(() => {
     if (!hasMounted) return
@@ -93,16 +103,22 @@ export default function AttendancePage() {
   useEffect(() => {
     setScoreSetupByClass((prev) => {
       if (prev[setupKey]) return prev
-      return { ...prev, [setupKey]: prev['Grade 10'] ? prev['Grade 10'].map((r) => ({ ...r, id: `${r.id}_${Date.now()}` })) : [] }
+      const baseKey = prev['Grade 10'] ? 'Grade 10' : Object.keys(prev)[0]
+      const base = baseKey ? prev[baseKey] : []
+      return { ...prev, [setupKey]: (base ?? []).map((r) => ({ ...r, id: `${r.id}_${Date.now()}` })) }
     })
     setGradeSetupByClass((prev) => {
       if (prev[setupKey]) return prev
-      return { ...prev, [setupKey]: prev['Grade 10'] ? prev['Grade 10'].map((r) => ({ ...r, id: `${r.id}_${Date.now()}` })) : [] }
+      const baseKey = prev['Grade 10'] ? 'Grade 10' : Object.keys(prev)[0]
+      const base = baseKey ? prev[baseKey] : []
+      return { ...prev, [setupKey]: (base ?? []).map((r) => ({ ...r, id: `${r.id}_${Date.now()}` })) }
     })
   }, [setupKey])
 
   const scoreRows = scoreSetupByClass[setupKey] ?? []
   const gradeRows = gradeSetupByClass[setupKey] ?? []
+
+  const classOptions = useMemo(() => (classLevels.length ? classLevels : DEFAULT_CLASSES), [classLevels])
 
   const [showScoreModal, setShowScoreModal] = useState(false)
   const [editingScoreId, setEditingScoreId] = useState<string | null>(null)
@@ -244,7 +260,9 @@ export default function AttendancePage() {
         <div className="card animate-in stagger-1">
           <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Class</label>
           <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} className="select w-48">
-            <option>Grade 10</option><option>Grade 11</option><option>Grade 12</option>
+            {classOptions.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
           </select>
         </div>
 

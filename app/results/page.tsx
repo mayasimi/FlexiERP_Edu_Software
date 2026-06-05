@@ -6,14 +6,17 @@ import Topbar from '@/components/layout/Topbar'
 import toast from 'react-hot-toast'
 import { Download, Pencil, Trash2, Upload } from 'lucide-react'
 import { adminMockDb } from '@/lib/admin-mock-db'
+import { getActiveTermId, getAcademicTerms, getClassLevelsFromDirectory, type AcademicTerm, withActiveTermKey, withTermKey } from '@/lib/utils'
 
 type AssessmentRecord = { id: string; assessment: string; max_score: number }
 type GradeRecord = { id: string; lower: number; upper: number; grade: string; remark: string }
 type StudentMarks = { ca?: Record<string, number | null>; exam?: number | null; remark?: string }
+type BehaviourSkillRecord = { id: string; type: 'Behaviour' | 'Skill'; name: string; max_score: number }
 
-const CLASSES = ['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12']
+const DEFAULT_CLASSES = ['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12']
 const ASSESSMENT_STORAGE_KEY = 'edu_results_assessment_setup_v1'
 const GRADE_STORAGE_KEY = 'edu_results_grade_setup_v1'
+const BEHAVIOUR_SKILL_STORAGE_KEY = 'edu_results_behaviour_skill_setup_v1'
 const MARKS_STORAGE_KEY = 'edu_instructor_assessment_marks_v1'
 
 const escapeCsv = (value: unknown) => {
@@ -129,16 +132,36 @@ export default function ResultsPage() {
   const gradeImportRef = useRef<HTMLInputElement>(null)
 
   const [hasMounted, setHasMounted] = useState(false)
+  const [termIdOverride, setTermIdOverride] = useState<string>('')
+  const [activeTermId, setActiveTermId] = useState<string>('')
+  const [terms, setTerms] = useState<AcademicTerm[]>([])
+  const [classes, setClasses] = useState<string[]>(DEFAULT_CLASSES)
   const [selectedClass, setSelectedClass] = useState<string>('Grade 12')
 
   const [assessmentByClass, setAssessmentByClass] = useState<Record<string, AssessmentRecord[]>>(() =>
-    Object.fromEntries(CLASSES.map((c) => [c, defaultAssessment]))
+    Object.fromEntries(DEFAULT_CLASSES.map((c) => [c, defaultAssessment]))
   )
   const [gradeByClass, setGradeByClass] = useState<Record<string, GradeRecord[]>>(() =>
-    Object.fromEntries(CLASSES.map((c) => [c, defaultGrades]))
+    Object.fromEntries(DEFAULT_CLASSES.map((c) => [c, defaultGrades]))
+  )
+  const [behaviourSkillByClass, setBehaviourSkillByClass] = useState<Record<string, BehaviourSkillRecord[]>>(() =>
+    Object.fromEntries(DEFAULT_CLASSES.map((c) => [c, [] as BehaviourSkillRecord[]]))
   )
 
   useEffect(() => setHasMounted(true), [])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    setActiveTermId(getActiveTermId(''))
+    setTerms(getAcademicTerms([]))
+  }, [hasMounted])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    const next = getClassLevelsFromDirectory(DEFAULT_CLASSES)
+    setClasses(next)
+    setSelectedClass((prev) => (next.includes(prev) ? prev : next[0] || prev))
+  }, [hasMounted])
 
   const [activeTab, setActiveTab] = useState<'settings' | 'view'>('settings')
 
@@ -146,24 +169,47 @@ export default function ResultsPage() {
     if (!hasMounted) return
     if (typeof window === 'undefined') return
     const read = () => {
-      const tab = new URLSearchParams(window.location.search).get('tab')
-      setActiveTab(tab === 'view' ? 'view' : 'settings')
+      const params = new URLSearchParams(window.location.search)
+      const tab = params.get('tab')
+      const term = (params.get('term') ?? '').trim()
+      setTermIdOverride(term)
+      setActiveTab(tab === 'view' || term ? 'view' : 'settings')
     }
     read()
     window.addEventListener('locationchange', read)
     return () => window.removeEventListener('locationchange', read)
   }, [hasMounted])
 
+  const termKey = useMemo(() => {
+    const v = termIdOverride.trim()
+    return v
+  }, [termIdOverride])
+
+  const isHistoryMode = useMemo(() => {
+    if (!termKey) return false
+    if (!activeTermId) return true
+    return termKey !== activeTermId
+  }, [activeTermId, termKey])
+
+  const storageKey = (baseKey: string) => (termKey ? withTermKey(baseKey, termKey) : withActiveTermKey(baseKey))
+
+  const activeTermLabel = useMemo(() => {
+    if (!termKey) return ''
+    const found = terms.find((t) => t.id === termKey) ?? null
+    return found?.name ?? ''
+  }, [termKey, terms])
+
   const goTab = (tab: 'settings' | 'view') => {
     setActiveTab(tab)
-    router.replace(`/results?tab=${tab}`)
+    router.replace(`/results?tab=${tab}${termKey ? `&term=${encodeURIComponent(termKey)}` : ''}`)
   }
 
   useEffect(() => {
     if (!hasMounted) return
     try {
-      const rawA = localStorage.getItem(ASSESSMENT_STORAGE_KEY)
-      const rawG = localStorage.getItem(GRADE_STORAGE_KEY)
+      const rawA = localStorage.getItem(storageKey(ASSESSMENT_STORAGE_KEY)) ?? localStorage.getItem(ASSESSMENT_STORAGE_KEY)
+      const rawG = localStorage.getItem(storageKey(GRADE_STORAGE_KEY)) ?? localStorage.getItem(GRADE_STORAGE_KEY)
+      const rawB = localStorage.getItem(storageKey(BEHAVIOUR_SKILL_STORAGE_KEY)) ?? localStorage.getItem(BEHAVIOUR_SKILL_STORAGE_KEY)
       if (rawA) {
         const parsed = JSON.parse(rawA) as Record<string, AssessmentRecord[]>
         setAssessmentByClass((prev) => ({ ...prev, ...parsed }))
@@ -172,20 +218,57 @@ export default function ResultsPage() {
         const parsed = JSON.parse(rawG) as Record<string, GradeRecord[]>
         setGradeByClass((prev) => ({ ...prev, ...parsed }))
       }
+      if (rawB) {
+        const parsed = JSON.parse(rawB) as Record<string, BehaviourSkillRecord[]>
+        setBehaviourSkillByClass((prev) => ({ ...prev, ...parsed }))
+      }
     } catch {
       toast.error('Could not load saved results setup.')
     }
-  }, [hasMounted])
+  }, [hasMounted, termKey])
 
   useEffect(() => {
     if (!hasMounted) return
-    localStorage.setItem(ASSESSMENT_STORAGE_KEY, JSON.stringify(assessmentByClass))
-  }, [assessmentByClass, hasMounted])
+    setAssessmentByClass((prev) => {
+      const next = { ...prev }
+      for (const c of classes) {
+        if (!Array.isArray(next[c]) || next[c].length === 0) next[c] = defaultAssessment
+      }
+      return next
+    })
+    setGradeByClass((prev) => {
+      const next = { ...prev }
+      for (const c of classes) {
+        if (!Array.isArray(next[c]) || next[c].length === 0) next[c] = defaultGrades
+      }
+      return next
+    })
+    setBehaviourSkillByClass((prev) => {
+      const next = { ...prev }
+      for (const c of classes) {
+        if (!Array.isArray(next[c])) next[c] = []
+      }
+      return next
+    })
+  }, [classes, hasMounted])
 
   useEffect(() => {
     if (!hasMounted) return
-    localStorage.setItem(GRADE_STORAGE_KEY, JSON.stringify(gradeByClass))
-  }, [gradeByClass, hasMounted])
+    if (isHistoryMode) return
+    localStorage.setItem(storageKey(ASSESSMENT_STORAGE_KEY), JSON.stringify(assessmentByClass))
+  }, [assessmentByClass, hasMounted, isHistoryMode, termKey])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    if (isHistoryMode) return
+    localStorage.setItem(storageKey(GRADE_STORAGE_KEY), JSON.stringify(gradeByClass))
+  }, [gradeByClass, hasMounted, isHistoryMode, termKey])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    if (isHistoryMode) return
+    localStorage.setItem(storageKey(BEHAVIOUR_SKILL_STORAGE_KEY), JSON.stringify(behaviourSkillByClass))
+  }, [behaviourSkillByClass, hasMounted, isHistoryMode, termKey])
 
   const assessments = assessmentByClass[selectedClass] ?? []
   const grades = gradeByClass[selectedClass] ?? []
@@ -207,22 +290,75 @@ export default function ResultsPage() {
   const [gradeRemark, setGradeRemark] = useState('')
   const [editingGradeId, setEditingGradeId] = useState<string | null>(null)
 
+  const behaviourSkills = behaviourSkillByClass[selectedClass] ?? []
+  const behaviours = useMemo(() => behaviourSkills.filter((x) => x.type === 'Behaviour'), [behaviourSkills])
+  const skills = useMemo(() => behaviourSkills.filter((x) => x.type === 'Skill'), [behaviourSkills])
+
+  const [bsType, setBsType] = useState<'Behaviour' | 'Skill'>('Behaviour')
+  const [bsName, setBsName] = useState('')
+  const [bsMax, setBsMax] = useState('')
+  const [editingBsId, setEditingBsId] = useState<string | null>(null)
+
+  const resetBsForm = () => {
+    setBsType('Behaviour')
+    setBsName('')
+    setBsMax('')
+    setEditingBsId(null)
+  }
+
+  const startEditBs = (r: BehaviourSkillRecord) => {
+    setBsType(r.type)
+    setBsName(r.name)
+    setBsMax(String(r.max_score))
+    setEditingBsId(r.id)
+  }
+
+  const saveBs = () => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to edit setup.')
+    const name = bsName.trim()
+    const max = Number(bsMax)
+    if (!name) return toast.error('Please enter a name.')
+    if (!Number.isFinite(max) || max <= 0) return toast.error('Please enter a valid max score.')
+
+    setBehaviourSkillByClass((prev) => {
+      const list = prev[selectedClass] ?? []
+      if (editingBsId) {
+        return {
+          ...prev,
+          [selectedClass]: list.map((x) => (x.id === editingBsId ? { ...x, type: bsType, name, max_score: max } : x)),
+        }
+      }
+      const next: BehaviourSkillRecord = { id: `bs-${Date.now()}`, type: bsType, name, max_score: max }
+      return { ...prev, [selectedClass]: [next, ...list] }
+    })
+    toast.success(editingBsId ? 'Updated.' : 'Added.')
+    resetBsForm()
+  }
+
+  const removeBs = (id: string) => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to edit setup.')
+    setBehaviourSkillByClass((prev) => ({ ...prev, [selectedClass]: (prev[selectedClass] ?? []).filter((x) => x.id !== id) }))
+    toast.success('Deleted.')
+    if (editingBsId === id) resetBsForm()
+  }
+
   const [marksStore, setMarksStore] = useState<Record<string, Record<string, StudentMarks>>>({})
   const [viewSection, setViewSection] = useState<string>('')
   const [viewSubject, setViewSubject] = useState<string>('')
   const [viewTeacher, setViewTeacher] = useState<string>('')
   const [viewSelectionKey, setViewSelectionKey] = useState<string>('')
+  const [viewStudentSearch, setViewStudentSearch] = useState<string>('')
 
   useEffect(() => {
     if (!hasMounted) return
     try {
-      const raw = localStorage.getItem(MARKS_STORAGE_KEY)
+      const raw = localStorage.getItem(storageKey(MARKS_STORAGE_KEY)) ?? localStorage.getItem(MARKS_STORAGE_KEY)
       const parsed = raw ? (JSON.parse(raw) as Record<string, Record<string, StudentMarks>>) : {}
       if (parsed && typeof parsed === 'object') setMarksStore(parsed)
     } catch {
       setMarksStore({})
     }
-  }, [hasMounted])
+  }, [hasMounted, termKey])
 
   const availableSelections = useMemo(() => {
     const list: Array<{
@@ -386,6 +522,16 @@ export default function ResultsPage() {
     })
   }, [caRows, gradeConfig, marksStore, selectedView, totalMax, viewStudents])
 
+  const filteredViewRows = useMemo(() => {
+    const q = viewStudentSearch.trim().toLowerCase()
+    if (!q) return viewRows
+    return viewRows.filter((r) => {
+      const name = (r.student?.name ?? '').toLowerCase()
+      const adm = (r.student as any)?.admission_no?.toString?.().toLowerCase?.() ?? ''
+      return name.includes(q) || adm.includes(q)
+    })
+  }, [viewRows, viewStudentSearch])
+
   const resetAssessmentForm = () => {
     setAssessmentName('')
     setAssessmentMax('')
@@ -407,6 +553,7 @@ export default function ResultsPage() {
   }
 
   const saveAssessment = () => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to edit setup.')
     const name = assessmentName.trim()
     const max = Number(assessmentMax)
     if (!name || !Number.isFinite(max) || max < 0) {
@@ -430,6 +577,7 @@ export default function ResultsPage() {
   }
 
   const removeAssessment = (id: string) => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to edit setup.')
     setAssessmentByClass((prev) => ({ ...prev, [selectedClass]: (prev[selectedClass] ?? []).filter((x) => x.id !== id) }))
     if (editingAssessmentId === id) resetAssessmentForm()
     toast.success('Assessment removed.')
@@ -444,6 +592,7 @@ export default function ResultsPage() {
   }
 
   const saveGrade = () => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to edit setup.')
     const lower = Number(gradeLower)
     const upper = Number(gradeUpper)
     const gradeText = gradeValue.trim()
@@ -470,12 +619,14 @@ export default function ResultsPage() {
   }
 
   const removeGrade = (id: string) => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to edit setup.')
     setGradeByClass((prev) => ({ ...prev, [selectedClass]: (prev[selectedClass] ?? []).filter((x) => x.id !== id) }))
     if (editingGradeId === id) resetGradeForm()
     toast.success('Grade removed.')
   }
 
   const importAssessmentCsvText = (text: string) => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to import setup.')
     try {
       const { headers, rows } = parseCsv(text)
       if (headers.length === 0) {
@@ -521,6 +672,7 @@ export default function ResultsPage() {
   }
 
   const importGradeCsvText = (text: string) => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to import setup.')
     try {
       const { headers, rows } = parseCsv(text)
       if (headers.length === 0) {
@@ -587,8 +739,29 @@ export default function ResultsPage() {
             <div className="min-w-[220px]">
               <label className="label">Select Class</label>
               <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="select">
-                {CLASSES.map((c) => (
+                {classes.map((c) => (
                   <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="min-w-[260px]">
+              <label className="label">Term</label>
+              <select
+                value={termKey}
+                onChange={(e) => {
+                  const next = e.target.value
+                  setTermIdOverride(next)
+                  const tab = activeTab === 'settings' && next ? 'view' : activeTab
+                  router.replace(`/results?tab=${tab}${next ? `&term=${encodeURIComponent(next)}` : ''}`)
+                }}
+                className="select"
+              >
+                <option value="">Active Term</option>
+                {terms.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.year ? `${t.year} • ${t.name}` : t.name}{t.status ? ` (${t.status})` : ''}
+                  </option>
                 ))}
               </select>
             </div>
@@ -616,6 +789,11 @@ export default function ResultsPage() {
               </div>
             </div>
           </div>
+          {isHistoryMode ? (
+            <div className="mt-3 text-xs" style={{ color: '#6B6660' }}>
+              Viewing history term: <span className="font-semibold">{activeTermLabel || termKey}</span>. Settings are read-only in history mode.
+            </div>
+          ) : null}
         </div>
 
         {activeTab === 'view' ? (
@@ -659,6 +837,16 @@ export default function ResultsPage() {
                   </select>
                 </div>
               ) : null}
+
+              <div className="min-w-[260px]">
+                <label className="label">Search Student</label>
+                <input
+                  className="input"
+                  value={viewStudentSearch}
+                  onChange={(e) => setViewStudentSearch(e.target.value)}
+                  placeholder="Name or admission no"
+                />
+              </div>
 
               <div className="min-w-[360px] flex-1">
                 <label className="label">Result Set</label>
@@ -704,7 +892,7 @@ export default function ResultsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {viewRows.map((r, idx) => (
+                      {filteredViewRows.map((r, idx) => (
                         <tr key={r.student.id}>
                           <td className="font-mono text-sm" style={{ color: '#6B6660' }}>{idx + 1}</td>
                           <td className="font-medium">{r.student.name}</td>
@@ -721,7 +909,7 @@ export default function ResultsPage() {
                           <td style={{ color: '#6B6660' }}>{r.remark}</td>
                         </tr>
                       ))}
-                      {viewRows.length === 0 ? (
+                      {filteredViewRows.length === 0 ? (
                         <tr>
                           <td colSpan={9 + caRows.length} style={{ padding: 20 }}>
                             <div className="text-sm" style={{ color: '#6B6660' }}>No students found for this class/section.</div>
@@ -931,6 +1119,106 @@ export default function ResultsPage() {
               ) : null}
               <button type="button" className="btn-gold" onClick={saveGrade}>{editingGradeId ? 'Save Changes' : 'Add Grade'}</button>
             </div>
+              </div>
+            </div>
+
+            <div className="card animate-in stagger-4 mt-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-bold">Behaviour & Skills Setup for {selectedClass}</h2>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <div className="rounded-xl overflow-hidden border" style={{ borderColor: '#E4E1D8' }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Behaviour</th>
+                        <th>Max Score</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {behaviours.map((r) => (
+                        <tr key={r.id}>
+                          <td className="font-medium">{r.name}</td>
+                          <td style={{ color: '#6B6660' }}>{r.max_score}</td>
+                          <td>
+                            <div className="flex gap-1">
+                              <button className="p-1.5 rounded hover:bg-gray-100" type="button" onClick={() => startEditBs(r)}>
+                                <Pencil size={14} style={{ color: '#6B6660' }} />
+                              </button>
+                              <button className="p-1.5 rounded hover:bg-red-50" type="button" onClick={() => removeBs(r.id)}>
+                                <Trash2 size={14} style={{ color: '#EF4444' }} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {behaviours.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} style={{ padding: 14 }}>
+                            <div className="text-sm" style={{ color: '#6B6660' }}>No behaviour items yet.</div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="rounded-xl overflow-hidden border" style={{ borderColor: '#E4E1D8' }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Skill</th>
+                        <th>Max Score</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {skills.map((r) => (
+                        <tr key={r.id}>
+                          <td className="font-medium">{r.name}</td>
+                          <td style={{ color: '#6B6660' }}>{r.max_score}</td>
+                          <td>
+                            <div className="flex gap-1">
+                              <button className="p-1.5 rounded hover:bg-gray-100" type="button" onClick={() => startEditBs(r)}>
+                                <Pencil size={14} style={{ color: '#6B6660' }} />
+                              </button>
+                              <button className="p-1.5 rounded hover:bg-red-50" type="button" onClick={() => removeBs(r.id)}>
+                                <Trash2 size={14} style={{ color: '#EF4444' }} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {skills.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} style={{ padding: 14 }}>
+                            <div className="text-sm" style={{ color: '#6B6660' }}>No skill items yet.</div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <div className="label">{editingBsId ? 'Edit Behaviour/Skill' : 'New Behaviour/Skill'}</div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <select className="select" value={bsType} onChange={(e) => setBsType(e.target.value as any)}>
+                    <option value="Behaviour">Behaviour</option>
+                    <option value="Skill">Skill</option>
+                  </select>
+                  <input value={bsName} onChange={(e) => setBsName(e.target.value)} className="input md:col-span-2" placeholder="Name" />
+                  <input value={bsMax} onChange={(e) => setBsMax(e.target.value)} className="input" placeholder="Max Score" />
+                </div>
+                <div className="flex justify-end gap-2 mt-3">
+                  {editingBsId ? (
+                    <button type="button" className="btn-outline" onClick={resetBsForm}>Cancel</button>
+                  ) : null}
+                  <button type="button" className="btn-gold" onClick={saveBs}>{editingBsId ? 'Save Changes' : 'Add'}</button>
+                </div>
               </div>
             </div>
 

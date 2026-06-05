@@ -1,8 +1,10 @@
 'use client'
-import { Clock, Users, ClipboardCheck, AlertCircle, MapPin, CheckCircle2, Calendar } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Calendar, CheckCircle2, Clock, Megaphone, X, Users, ClipboardCheck, AlertCircle, MapPin } from 'lucide-react'
 import { StatCard } from '../_components'
 import { MOCK_TODAY_SCHEDULE, MOCK_PENDING_ATTENDANCE, MOCK_UPCOMING_ASSESSMENTS } from '../_mock-data'
 import type { Section } from '../_types'
+import { getNoticesForRole, type NoticeItem } from '@/lib/utils'
 
 const scheduleStatusStyle: Record<string, { bg: string; text: string; label: string }> = {
   completed: { bg: '#ECFDF5', text: '#065F46', label: 'Completed' },
@@ -21,8 +23,28 @@ interface Props {
 export default function DashboardSection({ onNavigate }: Props) {
   const stats = { totalClasses: 5, totalStudents: 156, attendanceRate: 92, pendingGrading: 3 }
 
+  const [notices, setNotices] = useState<NoticeItem[]>([])
+  const [showAllNoticesModal, setShowAllNoticesModal] = useState(false)
+  const [showNoticeViewModal, setShowNoticeViewModal] = useState(false)
+  const [selectedNoticeId, setSelectedNoticeId] = useState<string | null>(null)
+
+  const selectedNotice = useMemo(() => {
+    if (!selectedNoticeId) return null
+    return notices.find((n) => n.id === selectedNoticeId) ?? null
+  }, [notices, selectedNoticeId])
+
+  useEffect(() => {
+    setNotices(getNoticesForRole('staff', []))
+  }, [])
+
+  const openNoticeView = (id: string) => {
+    setSelectedNoticeId(id)
+    setShowNoticeViewModal(true)
+  }
+
   return (
-    <div>
+    <>
+      <div>
       <div className="page-header animate-in">
         <div className="gold-accent" />
         <h1 className="page-title">Instructor Dashboard</h1>
@@ -120,9 +142,123 @@ export default function DashboardSection({ onNavigate }: Props) {
                 ))}
               </div>
             </div>
+
+            {/* School Notices */}
+            <div className="card animate-in stagger-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Megaphone size={16} style={{ color: '#C9A020' }} />
+                  <h3 className="font-bold text-base">School Notices</h3>
+                </div>
+                {notices.length > 5 ? (
+                  <button type="button" className="text-xs font-medium" style={{ color: '#C9A020' }} onClick={() => setShowAllNoticesModal(true)}>
+                    View All
+                  </button>
+                ) : null}
+              </div>
+
+              {notices.length === 0 ? (
+                <div className="text-sm" style={{ color: '#6B6660' }}>No notices yet.</div>
+              ) : (
+                <div className="space-y-3">
+                  {notices.slice(0, 5).map((n) => (
+                    <button
+                      key={n.id}
+                      type="button"
+                      className="p-3 rounded-lg w-full text-left transition-all"
+                      style={{ background: '#F7F6F3', border: '1px solid #E4E1D8' }}
+                      onClick={() => openNoticeView(n.id)}
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <p className="font-semibold text-sm" style={{ color: '#0D0D0D' }}>{n.title}</p>
+                        <span className="text-xs flex-shrink-0" style={{ color: '#A09080' }}>{n.date}</span>
+                      </div>
+                      <p className="text-xs font-semibold tracking-wider mt-1" style={{ color: '#C9A020' }}>{n.audience}</p>
+                      <p className="text-sm mt-1" style={{ color: '#6B6660' }}>{n.body}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+      </div>
+
+      {showAllNoticesModal ? (
+        <div className="fixed inset-0" style={{ zIndex: 70, background: 'rgba(13,13,13,0.55)' }}>
+          <div className="min-h-screen flex items-center justify-center p-4">
+            <div className="card w-full max-w-4xl" style={{ maxHeight: 'calc(100vh - 32px)', overflowY: 'auto' }}>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-bold">All Notices</h3>
+                  <div className="text-sm" style={{ color: '#6B6660' }}>Click any notice to view the full message.</div>
+                </div>
+                <button type="button" className="p-2 rounded hover:bg-gray-100" onClick={() => setShowAllNoticesModal(false)}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {notices.map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    className="rounded-xl p-4 w-full text-left"
+                    style={{
+                      background: n.highlight ? 'rgba(201,160,32,0.06)' : '#F7F6F3',
+                      border: `1px solid ${n.highlight ? 'rgba(201,160,32,0.25)' : '#E4E1D8'}`,
+                      borderLeft: n.highlight ? '4px solid #C9A020' : '1px solid #E4E1D8',
+                    }}
+                    onClick={() => openNoticeView(n.id)}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <h3 className="font-bold text-sm">{n.title}</h3>
+                      <span className="text-xs flex-shrink-0 ml-2" style={{ color: '#A09080' }}>{n.date}</span>
+                    </div>
+                    <p className="text-xs font-semibold tracking-wider mb-1.5" style={{ color: '#C9A020' }}>{n.audience}</p>
+                    <p className="text-sm" style={{ color: '#6B6660' }}>{n.body}</p>
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex justify-end gap-2 mt-6">
+                <button type="button" className="btn-outline" onClick={() => setShowAllNoticesModal(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showNoticeViewModal && selectedNotice ? (
+        <div className="fixed inset-0" style={{ zIndex: 70, background: 'rgba(13,13,13,0.55)' }}>
+          <div className="min-h-screen flex items-center justify-center p-4">
+            <div className="card w-full max-w-3xl" style={{ maxHeight: 'calc(100vh - 32px)', overflowY: 'auto' }}>
+              <div className="flex items-center justify-between mb-4">
+                <div style={{ minWidth: 0 }}>
+                  <h3 className="font-bold" style={{ wordBreak: 'break-word' }}>{selectedNotice.title}</h3>
+                  <div className="text-sm" style={{ color: '#6B6660' }}>
+                    <span className="font-semibold" style={{ color: '#C9A020' }}>{selectedNotice.audience}</span>
+                    <span style={{ margin: '0 8px', color: '#A09080' }}>•</span>
+                    <span style={{ color: '#A09080' }}>{selectedNotice.date}</span>
+                  </div>
+                </div>
+                <button type="button" className="p-2 rounded hover:bg-gray-100" onClick={() => setShowNoticeViewModal(false)}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="text-sm" style={{ color: '#6B6660', whiteSpace: 'pre-wrap' }}>
+                {selectedNotice.body}
+              </div>
+
+              <div className="flex justify-end gap-2 mt-6">
+                <button type="button" className="btn-outline" onClick={() => setShowNoticeViewModal(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   )
 }
