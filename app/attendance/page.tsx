@@ -1,249 +1,129 @@
 'use client'
+
 import { useEffect, useMemo, useState } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import Topbar from '@/components/layout/Topbar'
 import toast from 'react-hot-toast'
-import { X } from 'lucide-react'
-import { getClassLevelsFromDirectory } from '@/lib/utils'
+import { CalendarDays, CheckCircle2, Search, XCircle } from 'lucide-react'
 
-type AttendanceStatus = 'P' | 'A' | 'L' | 'S'
+type WeeklyStatus = 'present' | 'absent'
 
-type AttendanceScoreRow = {
-  id: string
-  status: AttendanceStatus
-  label: string
-  score: number
+const MOCK_STUDENTS = [
+  { id: 'student-001', name: 'Chidinma Okafor', avatar: 'CO', class_id: 'class-ss2' },
+  { id: 'student-002', name: 'Emeka Okafor', avatar: 'EO', class_id: 'class-jss1' },
+  { id: 'student-003', name: 'Blessing Okafor', avatar: 'BO', class_id: 'class-pry4' },
+]
+
+const classes = [
+  { id: 'class-ss2', name: 'SS2' },
+  { id: 'class-jss1', name: 'JSS1' },
+  { id: 'class-pry4', name: 'Primary 4' },
+]
+
+function toIso(date: Date) {
+  return date.toISOString().slice(0, 10)
 }
 
-type AttendanceGradeRow = {
-  id: string
-  lower: number
-  upper: number
-  grade: string
-  remark: string
+function getMonday(date = new Date()) {
+  const next = new Date(date)
+  const day = next.getDay() || 7
+  next.setDate(next.getDate() - day + 1)
+  return next
 }
 
-type ScoreSetupByClass = Record<string, AttendanceScoreRow[]>
-type GradeSetupByClass = Record<string, AttendanceGradeRow[]>
-
-const SCORE_STORAGE_KEY = 'edu_attendance_score_setup_v1'
-const GRADE_STORAGE_KEY = 'edu_attendance_grade_setup_v1'
-const DEFAULT_CLASSES = ['Grade 10', 'Grade 11', 'Grade 12']
+function addDays(value: string, days: number) {
+  const date = new Date(value)
+  date.setDate(date.getDate() + days)
+  return toIso(date)
+}
 
 export default function AttendancePage() {
-  const [selectedClass, setSelectedClass] = useState('Grade 10')
-  const [classLevels, setClassLevels] = useState<string[]>(DEFAULT_CLASSES)
-  const setupKey = selectedClass
-  const [hasMounted, setHasMounted] = useState(false)
-  const [scoreSetupByClass, setScoreSetupByClass] = useState<ScoreSetupByClass>(() => ({
-    ['Grade 10']: [
-      { id: 'st_p', status: 'P', label: 'Present', score: 1 },
-      { id: 'st_a', status: 'A', label: 'Absent', score: 0 },
-      { id: 'st_l', status: 'L', label: 'Late', score: 0.5 },
-      { id: 'st_s', status: 'S', label: 'Sick', score: 0 },
-    ],
-  }))
-  const [gradeSetupByClass, setGradeSetupByClass] = useState<GradeSetupByClass>(() => ({
-    ['Grade 10']: [
-      { id: 'g1', lower: 90, upper: 100, grade: 'A', remark: 'Excellent' },
-      { id: 'g2', lower: 75, upper: 89, grade: 'B', remark: 'Very Good' },
-      { id: 'g3', lower: 60, upper: 74, grade: 'C', remark: 'Good' },
-      { id: 'g4', lower: 40, upper: 59, grade: 'D', remark: 'Fair' },
-      { id: 'g5', lower: 0, upper: 39, grade: 'E', remark: 'Poor' },
-    ],
-  }))
+  const [selectedClass, setSelectedClass] = useState('class-ss2')
+  const [weekStart, setWeekStart] = useState(toIso(getMonday()))
+  const [attendance, setAttendance] = useState<Record<string, { status: WeeklyStatus; teacher_notes: string }>>({})
+  const [report, setReport] = useState<Array<{ id: string; student_id: string; status: WeeklyStatus; teacher_notes: string; student?: { name: string } }>>([])
+  const [query, setQuery] = useState('')
+  const weekEnd = addDays(weekStart, 6)
 
-  useEffect(() => {
-    setHasMounted(true)
-  }, [])
+  const classStudents = useMemo(
+    () => MOCK_STUDENTS.filter((student) => student.class_id === selectedClass && student.name.toLowerCase().includes(query.trim().toLowerCase())),
+    [query, selectedClass],
+  )
 
-  useEffect(() => {
-    if (!hasMounted) return
-    const next = getClassLevelsFromDirectory(DEFAULT_CLASSES)
-    setClassLevels(next)
-    setSelectedClass((prev) => (next.includes(prev) ? prev : next[0] || prev))
-  }, [hasMounted])
+  const counts = useMemo(() => {
+    return classStudents.reduce(
+      (acc, student) => {
+        const status = attendance[student.id]?.status || 'present'
+        acc[status] += 1
+        return acc
+      },
+      { present: 0, absent: 0 },
+    )
+  }, [attendance, classStudents])
 
-  useEffect(() => {
-    if (!hasMounted) return
-    try {
-      const raw = window.localStorage.getItem(SCORE_STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw) as unknown
-        if (parsed && typeof parsed === 'object') setScoreSetupByClass((prev) => ({ ...prev, ...(parsed as Record<string, AttendanceScoreRow[]>) }))
-      }
-    } catch {
-    }
-    try {
-      const raw = window.localStorage.getItem(GRADE_STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw) as unknown
-        if (parsed && typeof parsed === 'object') setGradeSetupByClass((prev) => ({ ...prev, ...(parsed as Record<string, AttendanceGradeRow[]>) }))
-      }
-    } catch {
-    }
-  }, [hasMounted])
+  const loadWeeklyReport = async () => {
+    const response = await fetch(`/api/attendance/weekly?class=${encodeURIComponent(selectedClass)}&weekStart=${encodeURIComponent(weekStart)}`)
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || 'Unable to load weekly attendance.')
 
-  useEffect(() => {
-    if (!hasMounted) return
-    try {
-      window.localStorage.setItem(SCORE_STORAGE_KEY, JSON.stringify(scoreSetupByClass))
-    } catch {
-    }
-  }, [hasMounted, scoreSetupByClass])
-
-  useEffect(() => {
-    if (!hasMounted) return
-    try {
-      window.localStorage.setItem(GRADE_STORAGE_KEY, JSON.stringify(gradeSetupByClass))
-    } catch {
-    }
-  }, [hasMounted, gradeSetupByClass])
-
-  useEffect(() => {
-    setScoreSetupByClass((prev) => {
-      if (prev[setupKey]) return prev
-      const baseKey = prev['Grade 10'] ? 'Grade 10' : Object.keys(prev)[0]
-      const base = baseKey ? prev[baseKey] : []
-      return { ...prev, [setupKey]: (base ?? []).map((r) => ({ ...r, id: `${r.id}_${Date.now()}` })) }
-    })
-    setGradeSetupByClass((prev) => {
-      if (prev[setupKey]) return prev
-      const baseKey = prev['Grade 10'] ? 'Grade 10' : Object.keys(prev)[0]
-      const base = baseKey ? prev[baseKey] : []
-      return { ...prev, [setupKey]: (base ?? []).map((r) => ({ ...r, id: `${r.id}_${Date.now()}` })) }
-    })
-  }, [setupKey])
-
-  const scoreRows = scoreSetupByClass[setupKey] ?? []
-  const gradeRows = gradeSetupByClass[setupKey] ?? []
-
-  const classOptions = useMemo(() => (classLevels.length ? classLevels : DEFAULT_CLASSES), [classLevels])
-
-  const [showScoreModal, setShowScoreModal] = useState(false)
-  const [editingScoreId, setEditingScoreId] = useState<string | null>(null)
-  const [scoreStatus, setScoreStatus] = useState<AttendanceStatus>('P')
-  const [scoreLabel, setScoreLabel] = useState('Present')
-  const [scoreValue, setScoreValue] = useState('1')
-
-  const [showGradeModal, setShowGradeModal] = useState(false)
-  const [editingGradeId, setEditingGradeId] = useState<string | null>(null)
-  const [gradeLower, setGradeLower] = useState('0')
-  const [gradeUpper, setGradeUpper] = useState('100')
-  const [gradeLetter, setGradeLetter] = useState('A')
-  const [gradeRemark, setGradeRemark] = useState('Excellent')
-
-  const openAddScore = () => {
-    setEditingScoreId(null)
-    setScoreStatus('P')
-    setScoreLabel('Present')
-    setScoreValue('1')
-    setShowScoreModal(true)
+    setReport(payload.data || [])
+    const loaded = Object.fromEntries((payload.data || []).map((record: { student_id: string; status: WeeklyStatus; teacher_notes: string }) => [
+      record.student_id,
+      { status: record.status, teacher_notes: record.teacher_notes || '' },
+    ]))
+    setAttendance((current) => ({ ...Object.fromEntries(classStudents.map((student) => [student.id, { status: 'present' as WeeklyStatus, teacher_notes: '' }])), ...loaded }))
   }
 
-  const openEditScore = (row: AttendanceScoreRow) => {
-    setEditingScoreId(row.id)
-    setScoreStatus(row.status)
-    setScoreLabel(row.label)
-    setScoreValue(String(row.score))
-    setShowScoreModal(true)
+  useEffect(() => {
+    setAttendance(Object.fromEntries(classStudents.map((student) => [student.id, { status: 'present' as WeeklyStatus, teacher_notes: '' }])))
+  }, [selectedClass])
+
+  useEffect(() => {
+    loadWeeklyReport().catch((error) => toast.error(error.message))
+  }, [selectedClass, weekStart])
+
+  const setStatus = (studentId: string, status: WeeklyStatus) => {
+    setAttendance((current) => ({
+      ...current,
+      [studentId]: { status, teacher_notes: current[studentId]?.teacher_notes || '' },
+    }))
   }
 
-  const saveScore = () => {
-    const label = scoreLabel.trim()
-    const score = Number(scoreValue)
-    if (!label) {
-      toast.error('Please enter a label.')
-      return
-    }
-    if (!Number.isFinite(score)) {
-      toast.error('Please enter a valid score.')
+  const setNotes = (studentId: string, teacher_notes: string) => {
+    setAttendance((current) => ({
+      ...current,
+      [studentId]: { status: current[studentId]?.status || 'present', teacher_notes },
+    }))
+  }
+
+  const markAll = (status: WeeklyStatus) => {
+    setAttendance(Object.fromEntries(classStudents.map((student) => [student.id, { status, teacher_notes: attendance[student.id]?.teacher_notes || '' }])))
+  }
+
+  const saveWeeklyAttendance = async () => {
+    const response = await fetch('/api/attendance/weekly', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        class_id: selectedClass,
+        week_start_date: weekStart,
+        week_end_date: weekEnd,
+        records: classStudents.map((student) => ({
+          student_id: student.id,
+          status: attendance[student.id]?.status || 'present',
+          teacher_notes: attendance[student.id]?.teacher_notes || '',
+        })),
+      }),
+    })
+
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      toast.error(payload.message || 'Unable to save weekly attendance.')
       return
     }
 
-    setScoreSetupByClass((prev) => {
-      const list = prev[setupKey] ?? []
-      if (editingScoreId) {
-        const updated = list.map((r) => (r.id === editingScoreId ? { ...r, status: scoreStatus, label, score } : r))
-        return { ...prev, [setupKey]: updated }
-      }
-      const exists = list.some((r) => r.status === scoreStatus)
-      if (exists) {
-        toast.error('This status already exists. Edit it instead.')
-        return prev
-      }
-      const row: AttendanceScoreRow = { id: `as_${Date.now()}`, status: scoreStatus, label, score }
-      return { ...prev, [setupKey]: [...list, row] }
-    })
-
-    toast.success(editingScoreId ? 'Score updated.' : 'Score added.')
-    setShowScoreModal(false)
-  }
-
-  const deleteScore = (id: string) => {
-    if (!window.confirm('Delete this score row?')) return
-    setScoreSetupByClass((prev) => {
-      const list = prev[setupKey] ?? []
-      return { ...prev, [setupKey]: list.filter((r) => r.id !== id) }
-    })
-    toast.success('Deleted.')
-  }
-
-  const openAddGrade = () => {
-    setEditingGradeId(null)
-    setGradeLower('0')
-    setGradeUpper('100')
-    setGradeLetter('A')
-    setGradeRemark('Excellent')
-    setShowGradeModal(true)
-  }
-
-  const openEditGrade = (row: AttendanceGradeRow) => {
-    setEditingGradeId(row.id)
-    setGradeLower(String(row.lower))
-    setGradeUpper(String(row.upper))
-    setGradeLetter(row.grade)
-    setGradeRemark(row.remark)
-    setShowGradeModal(true)
-  }
-
-  const saveGrade = () => {
-    const lower = Number(gradeLower)
-    const upper = Number(gradeUpper)
-    const grade = gradeLetter.trim()
-    const remark = gradeRemark.trim()
-
-    if (!Number.isFinite(lower) || !Number.isFinite(upper)) {
-      toast.error('Please enter valid range numbers.')
-      return
-    }
-    if (lower > upper) {
-      toast.error('Lower bound cannot be greater than upper bound.')
-      return
-    }
-    if (!grade) {
-      toast.error('Please enter a grade.')
-      return
-    }
-
-    setGradeSetupByClass((prev) => {
-      const list = prev[setupKey] ?? []
-      const row: AttendanceGradeRow = { id: editingGradeId ?? `ag_${Date.now()}`, lower, upper, grade, remark }
-      const next = editingGradeId ? list.map((r) => (r.id === editingGradeId ? row : r)) : [...list, row]
-      return { ...prev, [setupKey]: next.sort((a, b) => b.upper - a.upper) }
-    })
-
-    toast.success(editingGradeId ? 'Grade updated.' : 'Grade added.')
-    setShowGradeModal(false)
-  }
-
-  const deleteGrade = (id: string) => {
-    if (!window.confirm('Delete this grade row?')) return
-    setGradeSetupByClass((prev) => {
-      const list = prev[setupKey] ?? []
-      return { ...prev, [setupKey]: list.filter((r) => r.id !== id) }
-    })
-    toast.success('Deleted.')
+    setReport(payload.data || [])
+    toast.success('Weekly attendance saved.')
   }
 
   return (
@@ -252,182 +132,132 @@ export default function AttendancePage() {
 
       <div className="page-header animate-in">
         <div className="gold-accent" />
-        <h1 className="page-title">Attendance Setup</h1>
-        <p className="page-subtitle">Configure attendance scoring and grading rules per class.</p>
+        <h1 className="page-title">Weekly Attendance</h1>
+        <p className="page-subtitle">Mark student attendance for the selected Monday-Sunday week.</p>
       </div>
 
-      <div className="px-6 pb-8 space-y-4">
-        <div className="card animate-in stagger-1">
-          <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Class</label>
-          <select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} className="select w-48">
-            {classOptions.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
+      <div className="space-y-4 px-6 pb-8">
+        <div className="card">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#6B6660' }}>Class</span>
+              <select value={selectedClass} onChange={(event) => setSelectedClass(event.target.value)} className="select">
+                {classes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#6B6660' }}>Week Start</span>
+              <input type="date" value={weekStart} onChange={(event) => setWeekStart(event.target.value)} className="input" />
+            </label>
+            <label className="grid gap-1.5 md:col-span-2">
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#6B6660' }}>Search Students</span>
+              <div className="relative">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input value={query} onChange={(event) => setQuery(event.target.value)} className="input pl-9" placeholder="Search by student name" />
+              </div>
+            </label>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-            <div className="card animate-in stagger-2">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-bold text-base">Attendance Score Setup for {selectedClass}</h2>
-                <div className="flex gap-2">
-                  <button className="btn-gold text-xs px-3 py-1.5" onClick={openAddScore}>Add</button>
-                </div>
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+          <div className="card xl:col-span-2">
+            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="font-bold">Class Attendance Register</h2>
+                <p className="text-xs" style={{ color: '#6B6660' }}>{weekStart} to {weekEnd}</p>
               </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => markAll('present')} className="btn-outline text-xs" style={{ borderColor: '#10B981', color: '#10B981' }}>Mark All Present</button>
+                <button type="button" onClick={() => markAll('absent')} className="btn-outline text-xs" style={{ borderColor: '#EF4444', color: '#EF4444' }}>Mark All Absent</button>
+              </div>
+            </div>
 
-              <div className="rounded-lg overflow-hidden border" style={{ borderColor: '#E4E1D8' }}>
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: 90 }}>Status</th>
-                      <th>Label</th>
-                      <th style={{ width: 120 }}>Score</th>
-                      <th style={{ width: 140 }}>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {scoreRows.map((r) => (
-                      <tr key={r.id}>
-                        <td className="font-mono text-sm" style={{ color: '#6B6660' }}>{r.status}</td>
-                        <td className="font-medium">{r.label}</td>
-                        <td className="font-mono text-sm">{r.score}</td>
+            <div className="table-wrapper rounded-lg border" style={{ borderColor: '#E4E1D8' }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Student</th>
+                    <th>Status</th>
+                    <th>Teacher Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {classStudents.map((student) => {
+                    const current = attendance[student.id]?.status || 'present'
+                    return (
+                      <tr key={student.id}>
                         <td>
-                          <div className="flex gap-2">
-                            <button className="btn-outline text-xs px-3 py-1.5" onClick={() => openEditScore(r)}>Edit</button>
-                            <button className="btn-outline text-xs px-3 py-1.5" style={{ borderColor: '#EF4444', color: '#EF4444' }} onClick={() => deleteScore(r.id)}>Delete</button>
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold text-white" style={{ background: '#C9A020' }}>{student.avatar}</div>
+                            <span className="font-medium">{student.name}</span>
                           </div>
                         </td>
-                      </tr>
-                    ))}
-                    {scoreRows.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="text-sm" style={{ color: '#6B6660' }}>No rows yet.</td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="card animate-in stagger-3">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-bold text-base">Attendance Grade Setup for {selectedClass}</h2>
-                <div className="flex gap-2">
-                  <button className="btn-gold text-xs px-3 py-1.5" onClick={openAddGrade}>Add</button>
-                </div>
-              </div>
-
-              <div className="rounded-lg overflow-hidden border" style={{ borderColor: '#E4E1D8' }}>
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th style={{ width: 90 }}>Lower</th>
-                      <th style={{ width: 90 }}>Upper</th>
-                      <th style={{ width: 90 }}>Grade</th>
-                      <th>Remark</th>
-                      <th style={{ width: 140 }}>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {gradeRows.map((r) => (
-                      <tr key={r.id}>
-                        <td className="font-mono text-sm" style={{ color: '#6B6660' }}>{r.lower}</td>
-                        <td className="font-mono text-sm" style={{ color: '#6B6660' }}>{r.upper}</td>
-                        <td className="font-bold">{r.grade}</td>
-                        <td className="text-sm" style={{ color: '#6B6660' }}>{r.remark}</td>
                         <td>
-                          <div className="flex gap-2">
-                            <button className="btn-outline text-xs px-3 py-1.5" onClick={() => openEditGrade(r)}>Edit</button>
-                            <button className="btn-outline text-xs px-3 py-1.5" style={{ borderColor: '#EF4444', color: '#EF4444' }} onClick={() => deleteGrade(r.id)}>Delete</button>
+                          <div className="flex gap-1">
+                            {(['present', 'absent'] as WeeklyStatus[]).map((status) => (
+                              <button
+                                key={status}
+                                onClick={() => setStatus(student.id, status)}
+                                className="rounded-md px-3 py-1.5 text-xs font-bold capitalize"
+                                style={{
+                                  background: current === status ? (status === 'present' ? '#10B981' : '#EF4444') : '#F7F6F3',
+                                  color: current === status ? '#FFFFFF' : '#6B6660',
+                                }}
+                              >
+                                {status}
+                              </button>
+                            ))}
                           </div>
                         </td>
+                        <td>
+                          <input value={attendance[student.id]?.teacher_notes || ''} onChange={(event) => setNotes(student.id, event.target.value)} className="input py-1.5 text-sm" placeholder="Optional note" />
+                        </td>
                       </tr>
-                    ))}
-                    {gradeRows.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="text-sm" style={{ color: '#6B6660' }}>No rows yet.</td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
 
-        {showScoreModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}>
-            <div className="card w-full max-w-lg mx-4 animate-in">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="font-bold text-lg">{editingScoreId ? 'Edit Score' : 'New Score'}</h2>
-                <button onClick={() => setShowScoreModal(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100">
-                  <X size={18} />
-                </button>
+          <div className="space-y-4">
+            <div className="card">
+              <div className="mb-4 flex items-center gap-2">
+                <CalendarDays size={18} style={{ color: '#C9A020' }} />
+                <h3 className="font-bold">Weekly Summary</h3>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="label">Status</label>
-                  <select value={scoreStatus} onChange={(e) => setScoreStatus(e.target.value as AttendanceStatus)} className="select">
-                    <option value="P">P</option>
-                    <option value="A">A</option>
-                    <option value="L">L</option>
-                    <option value="S">S</option>
-                  </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg p-3 text-center" style={{ background: '#ECFDF5' }}>
+                  <CheckCircle2 className="mx-auto mb-2" size={20} color="#10B981" />
+                  <p className="text-2xl font-bold" style={{ color: '#065F46' }}>{counts.present}</p>
+                  <p className="text-xs" style={{ color: '#065F46' }}>Present</p>
                 </div>
-                <div className="md:col-span-2">
-                  <label className="label">Label</label>
-                  <input value={scoreLabel} onChange={(e) => setScoreLabel(e.target.value)} className="input" placeholder="e.g. Present" />
-                </div>
-                <div>
-                  <label className="label">Score</label>
-                  <input value={scoreValue} onChange={(e) => setScoreValue(e.target.value)} className="input" inputMode="decimal" placeholder="e.g. 1" />
+                <div className="rounded-lg p-3 text-center" style={{ background: '#FEF2F2' }}>
+                  <XCircle className="mx-auto mb-2" size={20} color="#EF4444" />
+                  <p className="text-2xl font-bold" style={{ color: '#991B1B' }}>{counts.absent}</p>
+                  <p className="text-xs" style={{ color: '#991B1B' }}>Absent</p>
                 </div>
               </div>
+            </div>
 
-              <div className="flex justify-end gap-3 mt-6">
-                <button onClick={() => setShowScoreModal(false)} className="btn-outline px-8">Cancel</button>
-                <button onClick={saveScore} className="btn-gold px-10">Save</button>
+            <div className="card">
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest" style={{ color: '#6B6660' }}>Saved Weekly Report</h3>
+              <div className="space-y-2">
+                {report.length === 0 && <p className="text-sm" style={{ color: '#6B6660' }}>No saved records for this week yet.</p>}
+                {report.map((record) => (
+                  <div key={record.id} className="flex justify-between gap-3 rounded-md px-3 py-2" style={{ background: '#F7F6F3' }}>
+                    <span className="text-sm">{record.student?.name || record.student_id}</span>
+                    <span className="text-xs font-bold capitalize" style={{ color: record.status === 'present' ? '#10B981' : '#EF4444' }}>{record.status}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
-        )}
+        </div>
 
-        {showGradeModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}>
-            <div className="card w-full max-w-lg mx-4 animate-in">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="font-bold text-lg">{editingGradeId ? 'Edit Grade' : 'New Grade'}</h2>
-                <button onClick={() => setShowGradeModal(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100">
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="label">Lower</label>
-                  <input value={gradeLower} onChange={(e) => setGradeLower(e.target.value)} className="input" inputMode="numeric" placeholder="e.g. 75" />
-                </div>
-                <div>
-                  <label className="label">Upper</label>
-                  <input value={gradeUpper} onChange={(e) => setGradeUpper(e.target.value)} className="input" inputMode="numeric" placeholder="e.g. 89" />
-                </div>
-                <div>
-                  <label className="label">Grade</label>
-                  <input value={gradeLetter} onChange={(e) => setGradeLetter(e.target.value)} className="input" placeholder="e.g. A" />
-                </div>
-                <div>
-                  <label className="label">Remark</label>
-                  <input value={gradeRemark} onChange={(e) => setGradeRemark(e.target.value)} className="input" placeholder="e.g. Excellent" />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 mt-6">
-                <button onClick={() => setShowGradeModal(false)} className="btn-outline px-8">Cancel</button>
-                <button onClick={saveGrade} className="btn-gold px-10">Save</button>
-              </div>
-            </div>
-          </div>
-        )}
+        <div className="flex justify-end">
+          <button type="button" onClick={saveWeeklyAttendance} className="btn-gold">Save Weekly Attendance</button>
+        </div>
       </div>
     </AppLayout>
   )

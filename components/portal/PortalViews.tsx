@@ -3,6 +3,13 @@ import { useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { AlertCircle, Award, Bell, BookMarked, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock, Download, Megaphone, Printer, Target, TrendingUp, UserRound, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { portalApi } from '@/lib/api'
+import dynamic from 'next/dynamic'
+import Link from 'next/link'
+import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { AlertCircle, Award, Bell, BookMarked, BookOpen, CalendarDays, CheckCircle2, ClipboardList, Clock, Download, Printer, Target, TrendingUp, UserRound } from 'lucide-react'
 import type { FeeItem } from '@/components/payment/PayStackModal'
 import { escapeHtml } from '@/lib/security'
 import { mockData, getGrade, GOLD, BORDER, BLUE, GREEN, RED } from './portalData'
@@ -12,6 +19,71 @@ import { getNoticesForRole, type NoticeItem } from '@/lib/utils'
 
 const PayStackModal = dynamic(() => import('@/components/payment/PayStackModal'), { ssr: false })
 
+type PortalDashboardData = {
+  student: Record<string, unknown>
+  stats: { attendance_pct: number; avg_score: number; outstanding_fees: number; upcoming_tests: number }
+  upcoming_assessments: unknown[]
+  fees: { structure: Array<{ amount: number }> }
+  recent_activity: unknown[]
+}
+
+const emptyPortalDashboard: PortalDashboardData = {
+  student: {},
+  stats: { attendance_pct: 0, avg_score: 0, outstanding_fees: 0, upcoming_tests: 0 },
+  upcoming_assessments: [],
+  fees: { structure: [] },
+  recent_activity: [],
+}
+
+function AttendanceBarChart({ compact = false }: { compact?: boolean }) {
+  const records = mockData.student.attendance
+  const data = records.map((item) => ({
+    week: item.week.replace('Week ', 'W'),
+    rate: item.schoolDays > 0 ? Math.round((item.daysPresent / item.schoolDays) * 100) : 0,
+  }))
+  const totalPresent = records.reduce((sum, item) => sum + item.daysPresent, 0)
+  const totalSchoolDays = records.reduce((sum, item) => sum + item.schoolDays, 0)
+  const average = totalSchoolDays > 0 ? Math.round((totalPresent / totalSchoolDays) * 100) : 0
+
+  return (
+    <div
+      style={{
+        background: '#FFFFFF',
+        border: `1px solid ${BORDER}`,
+        borderLeft: `3px solid ${GREEN}`,
+        borderRadius: 12,
+        padding: compact ? '12px 14px' : '14px 16px',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+        minHeight: compact ? 138 : 156,
+        display: 'grid',
+        gridTemplateRows: 'auto 1fr auto',
+        gap: 8,
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
+        <p style={{ margin: 0, fontSize: 10, color: '#9B9590', letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 600 }}>Attendance</p>
+        <span style={{ color: average >= 75 ? GREEN : RED, fontSize: 18, fontFamily: "'Georgia',serif", fontWeight: 800 }}>{average}%</span>
+      </div>
+      <div style={{ width: '100%', height: compact ? 70 : 84 }}>
+        <ResponsiveContainer width="100%" height={compact ? 70 : 84}>
+          <BarChart data={data} margin={{ top: 4, right: 0, bottom: 0, left: -34 }}>
+            <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9B9590' }} />
+            <YAxis domain={[0, 100]} hide />
+            <Tooltip
+              cursor={{ fill: '#F6F1E6' }}
+              formatter={(value) => [`${value}%`, 'Attendance']}
+              labelStyle={{ color: '#0D0D0D', fontWeight: 700 }}
+              contentStyle={{ border: `1px solid ${BORDER}`, borderRadius: 8, boxShadow: '0 8px 18px rgba(13,13,13,0.10)' }}
+            />
+            <Bar dataKey="rate" fill={GREEN} radius={[5, 5, 2, 2]} barSize={compact ? 14 : 18} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <p style={{ margin: 0, color: '#5C5750', fontSize: 12 }}>Weekly attendance trend</p>
+    </div>
+  )
+}
+
 function printElementById(elementId: string, title: string) {
   if (typeof window === 'undefined') return
 
@@ -20,7 +92,27 @@ function printElementById(elementId: string, title: string) {
 
   const printWindow = window.open('', '_blank', 'width=900,height=1100,noopener,noreferrer')
   if (!printWindow) {
+    const style = document.createElement('style')
+    style.setAttribute('data-report-print-style', 'true')
+    style.innerHTML = `
+      @media print {
+        body * { visibility: hidden !important; }
+        #${elementId}, #${elementId} * { visibility: visible !important; }
+        #${elementId} {
+          position: absolute !important;
+          inset: 0 auto auto 0 !important;
+          width: 100% !important;
+          max-width: none !important;
+          margin: 0 !important;
+          box-shadow: none !important;
+          border: none !important;
+        }
+        #${elementId} button { display: none !important; }
+      }
+    `
+    document.head.appendChild(style)
     window.print()
+    window.setTimeout(() => style.remove(), 500)
     return
   }
 
@@ -57,8 +149,134 @@ function printElementById(elementId: string, title: string) {
   }, 250)
 }
 
+async function inlineImages(element: HTMLElement) {
+  const images = Array.from(element.querySelectorAll('img'))
+  await Promise.all(images.map(async (image) => {
+    const src = image.getAttribute('src')
+    if (!src || src.startsWith('data:')) return
+
+    try {
+      const response = await fetch(src)
+      const blob = await response.blob()
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onloadend = () => resolve(String(reader.result))
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+      image.setAttribute('src', dataUrl)
+    } catch {
+      image.remove()
+    }
+  }))
+}
+
+function imageDataToPdf(imageDataUrl: string, width: number, height: number) {
+  const pageWidth = 595.28
+  const pageHeight = 841.89
+  const margin = 28
+  const maxWidth = pageWidth - margin * 2
+  const maxHeight = pageHeight - margin * 2
+  const scale = Math.min(maxWidth / width, maxHeight / height)
+  const imageWidth = width * scale
+  const imageHeight = height * scale
+  const x = (pageWidth - imageWidth) / 2
+  const y = (pageHeight - imageHeight) / 2
+  const imageBinary = atob(imageDataUrl.split(',')[1] || '')
+  const parts: string[] = []
+  const offsets: number[] = []
+  const add = (value: string) => {
+    offsets.push(parts.join('').length)
+    parts.push(value)
+  }
+
+  parts.push('%PDF-1.4\n')
+  add('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n')
+  add('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n')
+  add(`3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /XObject << /Im1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n`)
+  add(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${Math.round(width)} /Height ${Math.round(height)} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imageBinary.length} >>\nstream\n${imageBinary}\nendstream\nendobj\n`)
+
+  const content = `q\n${imageWidth.toFixed(2)} 0 0 ${imageHeight.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} cm\n/Im1 Do\nQ\n`
+  add(`5 0 obj\n<< /Length ${content.length} >>\nstream\n${content}endstream\nendobj\n`)
+
+  const xrefOffset = parts.join('').length
+  parts.push(`xref\n0 6\n0000000000 65535 f \n${offsets.map((offset) => `${String(offset).padStart(10, '0')} 00000 n `).join('\n')}\n`)
+  parts.push(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`)
+
+  const pdf = parts.join('')
+  const bytes = new Uint8Array(pdf.length)
+  for (let index = 0; index < pdf.length; index += 1) {
+    bytes[index] = pdf.charCodeAt(index)
+  }
+  return new Blob([bytes], { type: 'application/pdf' })
+}
+
+async function downloadReceiptDesign(element: HTMLElement | null, receipt: { id?: string; ref: string }) {
+  if (!element || typeof window === 'undefined') return
+
+  const clone = element.cloneNode(true) as HTMLElement
+  clone.querySelectorAll('[data-receipt-export-hidden="true"]').forEach((node) => node.remove())
+  clone.style.width = `${element.offsetWidth}px`
+  clone.style.maxHeight = 'none'
+  clone.style.overflow = 'visible'
+  clone.style.borderRadius = '14px'
+  await inlineImages(clone)
+
+  const wrapper = document.createElement('div')
+  wrapper.style.position = 'fixed'
+  wrapper.style.left = '-10000px'
+  wrapper.style.top = '0'
+  wrapper.style.background = '#FFFFFF'
+  wrapper.appendChild(clone)
+  document.body.appendChild(wrapper)
+
+  try {
+    const rect = clone.getBoundingClientRect()
+    const scale = Math.min(window.devicePixelRatio || 2, 3)
+    const serialized = new XMLSerializer().serializeToString(clone)
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${rect.width}" height="${rect.height}">
+        <foreignObject width="100%" height="100%">
+          <div xmlns="http://www.w3.org/1999/xhtml">${serialized}</div>
+        </foreignObject>
+      </svg>
+    `
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = reject
+      img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+    })
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.ceil(rect.width * scale)
+    canvas.height = Math.ceil(rect.height * scale)
+    const context = canvas.getContext('2d')
+    if (!context) return
+    context.fillStyle = '#FFFFFF'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+    const pdf = imageDataToPdf(canvas.toDataURL('image/jpeg', 0.95), canvas.width, canvas.height)
+    const url = URL.createObjectURL(pdf)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `receipt-${(receipt.id || receipt.ref).replace(/[^a-z0-9-]/gi, '-')}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 500)
+  } finally {
+    wrapper.remove()
+  }
+}
+
 export function Dashboard({ role }: { role: RoleType }) {
   const d = mockData.student
+  const { data: dashboardData } = useQuery<PortalDashboardData>({
+    queryKey: ['portal-dashboard'],
+    queryFn: () => portalApi.getDashboard().then(r => r.data),
+    placeholderData: emptyPortalDashboard,
+  })
   const [showTeacherContact, setShowTeacherContact] = useState(false)
   const [schoolNotices, setSchoolNotices] = useState<NoticeItem[]>([])
   const [showAllNoticesModal, setShowAllNoticesModal] = useState(false)
@@ -83,6 +301,8 @@ export function Dashboard({ role }: { role: RoleType }) {
   const avgAtt = Math.round(
     d.attendance.reduce((sum, item) => sum + (item.present / item.total) * 100, 0) / d.attendance.length,
   )
+  const dashboard = dashboardData ?? emptyPortalDashboard
+  const totalFeesDue = dashboard.fees.structure.reduce((sum, fee) => sum + fee.amount, 0)
 
   return (
     <div>
@@ -152,7 +372,7 @@ export function Dashboard({ role }: { role: RoleType }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 12, marginBottom: 24 }}>
         <StatCard label='Fees Balance' value={`₦${(totalFeesDue / 1000).toFixed(0)}k`} sub='This term outstanding' color={RED} />
         <StatCard label='Avg CA Score' value='72%' sub='2nd Term CAs' color={GOLD} />
-        <StatCard label='Attendance' value={`${avgAtt}%`} sub='This term' color={GREEN} />
+        <AttendanceBarChart />
         <StatCard label='Class Position' value={`${d.reportCard.position}th`} sub={`of ${d.reportCard.classSize} students`} color={BLUE} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -404,11 +624,14 @@ export function Subjects() {
 export function Fees() {
   const fees = mockData.student.fees
   const feeItems: FeeItem[] = fees.structure.map((fee, index) => ({ id: index + 1, ...fee }))
+  type PaymentHistoryItem = (typeof fees.history)[number] & { items?: Array<{ label: string; amount: number }> }
   const [selectedFeeIds, setSelectedFeeIds] = useState<number[]>(feeItems.map((fee) => fee.id))
   const [isPaymentOpen, setIsPaymentOpen] = useState(false)
   const [paymentNotice, setPaymentNotice] = useState('')
-  const [paymentHistory, setPaymentHistory] = useState(fees.history)
+  const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryItem[]>(fees.history)
+  const [selectedReceipt, setSelectedReceipt] = useState<PaymentHistoryItem | null>(null)
   const [currentTermPaid, setCurrentTermPaid] = useState(50000)
+  const receiptRef = useRef<HTMLDivElement | null>(null)
   const totalDue = feeItems.reduce((sum, fee) => sum + fee.amount, 0)
   const totalPaid = paymentHistory.reduce((sum, fee) => sum + fee.amount, 0)
   const balance = Math.max(totalDue - currentTermPaid, 0)
@@ -419,14 +642,16 @@ export function Fees() {
     setSelectedFeeIds((current) => (current.includes(id) ? current.filter((feeId) => feeId !== id) : [...current, id]))
   }
 
-  const handlePaymentSuccess = ({ reference, amount }: { reference: string; amount: number; studentId: string; selectedFees: FeeItem[] }) => {
+  const handlePaymentSuccess = ({ reference, amount, selectedFees }: { reference: string; amount: number; studentId: string; selectedFees: FeeItem[] }) => {
     setPaymentHistory((current) => [
       {
+        id: reference,
         date: new Date().toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' }),
         desc: `${mockData.term} Fees Payment`,
         amount,
         method: 'PayStack',
         ref: reference,
+        items: selectedFees.map((fee) => ({ label: fee.label, amount: fee.amount })),
       },
       ...current,
     ])
@@ -503,17 +728,23 @@ export function Fees() {
           </div>
         </Card>
         <Card>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <div style={{ marginBottom: 14 }}>
             <CardLabel>Payment History</CardLabel>
-            <button style={{ background: 'transparent', border: `1px solid ${GOLD}66`, color: GOLD, fontSize: 11, padding: '5px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 700 }}>Download</button>
           </div>
           {paymentHistory.map((item, index) => (
             <div key={index} style={{ padding: '10px 0', borderBottom: index < paymentHistory.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                 <div>
                   <p style={{ margin: '0 0 2px', fontSize: 13, color: '#0D0D0D', fontWeight: 500 }}>{item.desc}</p>
                   <p style={{ margin: '0 0 1px', fontSize: 11, color: '#9B9590' }}>{item.date} / {item.method}</p>
                   <p style={{ margin: 0, fontSize: 10, color: '#9B9590', fontFamily: 'monospace' }}>{item.ref}</p>
+                  <button
+                    type='button'
+                    onClick={() => setSelectedReceipt(item)}
+                    style={{ marginTop: 8, border: `1px solid ${GOLD}66`, color: GOLD, background: '#FFFFFF', fontSize: 11, padding: '6px 12px', borderRadius: 6, fontWeight: 900, cursor: 'pointer' }}
+                  >
+                    View
+                  </button>
                 </div>
                 <p style={{ margin: 0, fontSize: 13, color: GREEN, fontFamily: 'monospace', fontWeight: 700 }}>NGN {item.amount.toLocaleString()}</p>
               </div>
@@ -521,6 +752,112 @@ export function Fees() {
           ))}
         </Card>
       </div>
+      {selectedReceipt && (
+        <div
+          role='dialog'
+          aria-modal='true'
+          aria-label='Payment receipt'
+          onClick={() => setSelectedReceipt(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(13,13,13,0.56)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}
+        >
+          <div
+            ref={receiptRef}
+            onClick={(event) => event.stopPropagation()}
+            style={{ width: 'min(620px,100%)', maxHeight: '90vh', overflowY: 'auto', background: '#FFFFFF', borderRadius: 14, border: `1px solid ${BORDER}`, boxShadow: '0 24px 70px rgba(13,13,13,0.28)' }}
+          >
+            <div style={{ background: '#0D0D0D', color: '#FFFFFF', padding: 20, display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'flex-start' }}>
+              <div style={{ display: 'flex', gap: 14, alignItems: 'center', minWidth: 0 }}>
+                <div style={{ width: 58, height: 58, borderRadius: 12, background: '#FFFFFF', border: `1px solid ${GOLD}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                  <img src='/FLEXI_LOGO.png' alt={`${mockData.schoolName} logo`} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 7 }} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: 0, color: GOLD, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 900 }}>Official Receipt</p>
+                  <h3 style={{ margin: '5px 0 0', color: '#FFFFFF', fontSize: 23, fontFamily: "'Georgia',serif", fontWeight: 400, lineHeight: 1.15 }}>{mockData.schoolName}</h3>
+                  <p style={{ margin: '5px 0 0', color: '#D7D2CB', fontSize: 12 }}>{mockData.term} · {mockData.session}</p>
+                </div>
+              </div>
+              <button
+                type='button'
+                onClick={() => setSelectedReceipt(null)}
+                aria-label='Close receipt'
+                data-receipt-export-hidden='true'
+                style={{ border: `1px solid ${GOLD}55`, background: 'transparent', color: GOLD, borderRadius: 8, width: 34, height: 34, fontSize: 18, lineHeight: 1, cursor: 'pointer', flexShrink: 0 }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ padding: 22, display: 'grid', gap: 18 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 12 }}>
+                <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, padding: 13, background: '#FAFAF8' }}>
+                  <p style={{ margin: 0, color: '#9B9590', fontSize: 10, fontWeight: 900, letterSpacing: 0.9, textTransform: 'uppercase' }}>Student</p>
+                  <p style={{ margin: '6px 0 0', color: '#0D0D0D', fontSize: 14, fontWeight: 850 }}>{mockData.student.name}</p>
+                  <p style={{ margin: '3px 0 0', color: '#5C5750', fontSize: 12 }}>{mockData.student.id} · {mockData.student.class}</p>
+                </div>
+                <div style={{ border: `1px solid ${GREEN}33`, borderRadius: 10, padding: 13, background: `${GREEN}10` }}>
+                  <p style={{ margin: 0, color: GREEN, fontSize: 10, fontWeight: 900, letterSpacing: 0.9, textTransform: 'uppercase' }}>Amount Paid</p>
+                  <p style={{ margin: '6px 0 0', color: GREEN, fontSize: 24, fontFamily: "'Georgia',serif", fontWeight: 800 }}>NGN {selectedReceipt.amount.toLocaleString()}</p>
+                </div>
+              </div>
+
+              <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '12px 14px', background: '#FAFAF8', borderBottom: `1px solid ${BORDER}` }}>
+                  <span style={{ color: '#9B9590', fontSize: 11, fontWeight: 900, letterSpacing: 0.8, textTransform: 'uppercase' }}>Payment Items</span>
+                  <span style={{ color: '#9B9590', fontSize: 11, fontWeight: 900, letterSpacing: 0.8, textTransform: 'uppercase' }}>Amount</span>
+                </div>
+                {(selectedReceipt.items && selectedReceipt.items.length > 0 ? selectedReceipt.items : [{ label: selectedReceipt.desc, amount: selectedReceipt.amount }]).map((item, index) => (
+                  <div key={`${item.label}-${index}`} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, padding: '12px 14px', borderTop: index === 0 ? 'none' : `1px solid ${BORDER}`, background: '#FFFFFF' }}>
+                    <span style={{ color: '#0D0D0D', fontSize: 13, fontWeight: 750 }}>{item.label}</span>
+                    <span style={{ color: '#0D0D0D', fontSize: 13, fontWeight: 850, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>NGN {item.amount.toLocaleString()}</span>
+                  </div>
+                ))}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, padding: '12px 14px', background: `${GREEN}10`, borderTop: `1px solid ${GREEN}33` }}>
+                  <span style={{ color: GREEN, fontSize: 13, fontWeight: 900 }}>Total Paid</span>
+                  <span style={{ color: GREEN, fontSize: 14, fontWeight: 900, fontFamily: 'monospace' }}>NGN {selectedReceipt.amount.toLocaleString()}</span>
+                </div>
+              </div>
+
+              <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, overflow: 'hidden' }}>
+                {[
+                  ['Payment Date', selectedReceipt.date],
+                  ['Payment Method', selectedReceipt.method],
+                  ['Reference', selectedReceipt.ref],
+                  ['Receipt ID', selectedReceipt.id || selectedReceipt.ref],
+                  ['Status', 'Successful'],
+                ].map(([label, value], index) => (
+                  <div key={label} style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 12, padding: '12px 14px', borderTop: index === 0 ? 'none' : `1px solid ${BORDER}`, background: index % 2 === 0 ? '#FFFFFF' : '#FAFAF8' }}>
+                    <span style={{ color: '#9B9590', fontSize: 11, fontWeight: 900, letterSpacing: 0.8, textTransform: 'uppercase' }}>{label}</span>
+                    <span style={{ color: label === 'Status' ? GREEN : '#0D0D0D', fontSize: 13, fontWeight: label === 'Reference' || label === 'Receipt ID' ? 800 : 650, fontFamily: label === 'Reference' || label === 'Receipt ID' ? 'monospace' : 'inherit', wordBreak: 'break-word' }}>{value}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ background: `${GOLD}10`, border: `1px solid ${GOLD}33`, borderRadius: 10, padding: 13 }}>
+                <p style={{ margin: 0, color: '#5C5750', fontSize: 12, lineHeight: 1.6 }}>
+                  This receipt confirms that the payment above has been recorded for {mockData.student.name}. Please keep this reference for school fee reconciliation.
+                </p>
+              </div>
+
+              <div data-receipt-export-hidden='true' style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  type='button'
+                  onClick={() => setSelectedReceipt(null)}
+                  style={{ border: `1px solid ${BORDER}`, color: '#5C5750', background: '#FFFFFF', fontSize: 12, padding: '9px 14px', borderRadius: 8, fontWeight: 800, cursor: 'pointer' }}
+                >
+                  Close
+                </button>
+                <button
+                  type='button'
+                  onClick={() => downloadReceiptDesign(receiptRef.current, selectedReceipt)}
+                  style={{ border: 'none', color: '#0D0D0D', background: GOLD, fontSize: 12, padding: '10px 15px', borderRadius: 8, fontWeight: 900, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                >
+                  Download Receipt
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <PayStackModal
         isOpen={isPaymentOpen}
         onClose={() => setIsPaymentOpen(false)}
@@ -536,114 +873,95 @@ export function Fees() {
   )
 }
 export function Attendance() {
-  const [view, setView] = useState<'list' | 'calendar'>('list')
   const att = mockData.student.attendance
-  const totalPresent = att.reduce((sum, item) => sum + item.present, 0)
-  const totalAbsent = att.reduce((sum, item) => sum + item.absent, 0)
-  const totalLate = att.reduce((sum, item) => sum + item.late, 0)
-  const overall = Math.round((totalPresent / att.reduce((sum, item) => sum + item.total, 0)) * 100)
-  const calDays = Array.from({ length: 31 }, (_, index) => {
-    if ([0, 6].includes(index % 7)) return 'weekend'
-    const random = Math.random()
-    return random > 0.88 ? 'absent' : random > 0.76 ? 'late' : 'present'
-  })
+  const [selectedWeekStart, setSelectedWeekStart] = useState(att[0]?.weekStart || '')
+  const selectedWeek = att.find((item) => item.weekStart === selectedWeekStart) || att[0]
+  const totalPresent = att.reduce((sum, item) => sum + item.daysPresent, 0)
+  const totalSchoolDays = att.reduce((sum, item) => sum + item.schoolDays, 0)
+  const totalAbsent = totalSchoolDays - totalPresent
+  const presentWeeks = att.filter((item) => item.status === 'present').length
+  const overall = totalSchoolDays > 0 ? Math.round((totalPresent / totalSchoolDays) * 100) : 0
+  const chartData = att.map((item) => ({
+    absent: Math.max(item.schoolDays - item.daysPresent, 0),
+    present: item.daysPresent,
+    rate: item.schoolDays > 0 ? Math.round((item.daysPresent / item.schoolDays) * 100) : 0,
+    week: item.week.replace('Week ', 'W'),
+  }))
+  const formatWeekDate = (value: string) => new Date(value).toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' })
+  const statusColor = (status: string) => (status === 'present' ? GREEN : RED)
 
   return (
     <div>
       <div style={{ marginBottom: 22 }}>
-        <h2 style={{ margin: '0 0 4px', fontSize: 22, color: '#0D0D0D', fontFamily: "'Georgia',serif", fontWeight: 400 }}>Attendance Record</h2>
-        <p style={{ margin: 0, fontSize: 13, color: '#5C5750' }}>{mockData.term} · {mockData.session}</p>
+        <h2 style={{ margin: '0 0 4px', fontSize: 22, color: '#0D0D0D', fontFamily: "'Georgia',serif", fontWeight: 400 }}>Weekly Attendance Record</h2>
+        <p style={{ margin: 0, fontSize: 13, color: '#5C5750' }}>{mockData.term} · {mockData.session} · {mockData.student.class}</p>
       </div>
       {overall < 75 && (
         <div style={{ background: `${RED}10`, border: `1px solid ${RED}44`, borderRadius: 10, padding: '12px 18px', marginBottom: 16 }}>
-          <p style={{ margin: 0, fontSize: 13, color: RED, fontWeight: 600 }}>⚠️ Attendance below 75% minimum. Students below this threshold may be barred from sitting examinations.</p>
+          <p style={{ margin: 0, fontSize: 13, color: RED, fontWeight: 600 }}>Attendance below 75% minimum. Students below this threshold may be barred from sitting examinations.</p>
         </div>
       )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
-        <StatCard label='Overall' value={`${overall}%`} sub='Attendance rate' color={overall >= 75 ? GOLD : RED} />
+        <StatCard label='Overall' value={`${overall}%`} sub='Weekly attendance rate' color={overall >= 75 ? GOLD : RED} />
         <StatCard label='Present' value={`${totalPresent}`} sub='Days attended' color={GREEN} />
         <StatCard label='Absent' value={`${totalAbsent}`} sub='Days missed' color={RED} />
-        <StatCard label='Late' value={`${totalLate}`} sub='Late arrivals' color='#E8A020' />
+        <StatCard label='Weeks Present' value={`${presentWeeks}/${att.length}`} sub='Recorded weeks' color={BLUE} />
       </div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {['list', 'calendar'].map((item) => (
-          <button
-            key={item}
-            onClick={() => setView(item as 'list' | 'calendar')}
-            style={{
-              padding: '7px 18px',
-              borderRadius: 7,
-              background: view === item ? GOLD : '#FFFFFF',
-              border: `1px solid ${view === item ? GOLD : BORDER}`,
-              color: view === item ? '#0D0D0D' : '#5C5750',
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
+      <Card style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'end', gap: 12, flexWrap: 'wrap' }}>
+        <label style={{ display: 'grid', gap: 5, minWidth: 240 }}>
+          <span style={{ color: '#5C5750', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.8 }}>View Week</span>
+          <select
+            value={selectedWeekStart}
+            onChange={(event) => setSelectedWeekStart(event.target.value)}
+            style={{ border: `1px solid ${BORDER}`, borderRadius: 8, padding: '9px 11px', color: '#0D0D0D', background: '#FFFFFF', outlineColor: GOLD }}
           >
-            {item === 'list' ? 'By Subject' : 'Calendar View'}
-          </button>
-        ))}
-      </div>
-      {view === 'list' ? (
-        <div style={{ display: 'grid', gap: 10 }}>
-          {att.map((item, index) => {
-            const pct = Math.round((item.present / item.total) * 100)
-            return (
-              <Card key={index} style={{ padding: '14px 18px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#0D0D0D' }}>{item.subject}</p>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: pct >= 75 ? GREEN : RED, fontFamily: 'monospace' }}>{pct}%</span>
-                </div>
-                <div style={{ height: 5, background: BORDER, borderRadius: 3, marginBottom: 8 }}>
-                  <div style={{ height: 5, borderRadius: 3, width: `${pct}%`, background: pct >= 75 ? GREEN : RED }} />
-                </div>
-                <div style={{ display: 'flex', gap: 16 }}>
-                  <span style={{ fontSize: 12, color: GREEN }}>● Present: {item.present}</span>
-                  <span style={{ fontSize: 12, color: RED }}>● Absent: {item.absent}</span>
-                  <span style={{ fontSize: 12, color: '#E8A020' }}>● Late: {item.late}</span>
-                  <span style={{ fontSize: 12, color: '#9B9590' }}>Total: {item.total} days</span>
-                </div>
-              </Card>
-            )
-          })}
+            {att.map((item) => (
+              <option key={item.weekStart} value={item.weekStart}>
+                {item.week} - {formatWeekDate(item.weekStart)} to {formatWeekDate(item.weekEnd)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div style={{ display: 'grid', gap: 2, textAlign: 'right' }}>
+          <span style={{ color: '#9B9590', fontSize: 10, fontWeight: 900, letterSpacing: 0.8, textTransform: 'uppercase' }}>Selected Report</span>
+          <span style={{ color: '#0D0D0D', fontSize: 13, fontWeight: 850 }}>{selectedWeek.week}</span>
         </div>
-      ) : (
+      </Card>
+
+      <Card style={{ marginBottom: 16 }}>
+        <CardLabel>Weekly Attendance Bar Chart</CardLabel>
+        <div style={{ height: 280, width: '100%' }}>
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: -22 }}>
+              <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#5C5750' }} />
+              <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#9B9590' }} />
+              <Tooltip
+                cursor={{ fill: '#F6F1E6' }}
+                formatter={(value, name) => [name === 'rate' ? `${value}%` : `${value} days`, name === 'present' ? 'Present' : name === 'absent' ? 'Absent' : 'Rate']}
+                labelStyle={{ color: '#0D0D0D', fontWeight: 800 }}
+                contentStyle={{ border: `1px solid ${BORDER}`, borderRadius: 8, boxShadow: '0 8px 18px rgba(13,13,13,0.10)' }}
+              />
+              <Bar dataKey="present" fill={GREEN} radius={[5, 5, 0, 0]} name="Present" />
+              <Bar dataKey="absent" fill={RED} radius={[5, 5, 0, 0]} name="Absent" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      {selectedWeek ? (
         <Card>
-          <CardLabel>February 2026 — School Calendar</CardLabel>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 5 }}>
-            {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((day) => (
-              <p key={day} style={{ margin: '0 0 6px', fontSize: 10, color: '#9B9590', textAlign: 'center', fontFamily: 'monospace', fontWeight: 600 }}>{day}</p>
-            ))}
-            {calDays.map((status, index) => (
-              <div
-                key={index}
-                style={{
-                  height: 34,
-                  borderRadius: 6,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  fontFamily: 'monospace',
-                  background: status === 'weekend' ? '#F0EFE8' : status === 'present' ? `${GREEN}18` : status === 'absent' ? `${RED}18` : '#E8A02018',
-                  border: `1px solid ${status === 'weekend' ? BORDER : status === 'present' ? GREEN + '44' : status === 'absent' ? RED + '44' : '#E8A02044'}`,
-                  color: status === 'weekend' ? '#9B9590' : status === 'present' ? GREEN : status === 'absent' ? RED : '#E8A020',
-                }}
-              >
-                {index + 1}
-              </div>
-            ))}
+          <CardLabel>{selectedWeek.week} Attendance Report</CardLabel>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 12, marginBottom: 16 }}>
+            <StatCard label='Week' value={selectedWeek.week} sub={`${formatWeekDate(selectedWeek.weekStart)} to ${formatWeekDate(selectedWeek.weekEnd)}`} color={GOLD} />
+            <StatCard label='Status' value={selectedWeek.status === 'present' ? 'Present' : 'Absent'} sub='Weekly mark' color={statusColor(selectedWeek.status)} />
+            <StatCard label='Days Present' value={`${selectedWeek.daysPresent}/${selectedWeek.schoolDays}`} sub='School days' color={GREEN} />
           </div>
-          <div style={{ display: 'flex', gap: 16, marginTop: 14 }}>
-            <span style={{ fontSize: 11, color: GREEN }}>■ Present</span>
-            <span style={{ fontSize: 11, color: RED }}>■ Absent</span>
-            <span style={{ fontSize: 11, color: '#E8A020' }}>■ Late</span>
-            <span style={{ fontSize: 11, color: '#9B9590' }}>■ Weekend</span>
+          <div style={{ background: '#FAFAF8', border: `1px solid ${BORDER}`, borderRadius: 10, padding: 14 }}>
+            <p style={{ margin: 0, color: '#0D0D0D', fontSize: 13, fontWeight: 800 }}>Teacher Note</p>
+            <p style={{ margin: '6px 0 0', color: '#5C5750', fontSize: 13, lineHeight: 1.6 }}>{selectedWeek.note || 'No note was added for this week.'}</p>
           </div>
         </Card>
-      )}
+      ) : null}
     </div>
   )
 }
@@ -1159,7 +1477,13 @@ export function ReportCard() {
   )
 }
 
-export function ParentNotifications({ selectedNotificationId }: { selectedNotificationId?: string | null } = {}) {
+export function ParentNotifications({
+  selectedNotificationId,
+  baseHref = '/notifications',
+}: {
+  selectedNotificationId?: string | null
+  baseHref?: string
+} = {}) {
   const notifications = mockData.parentNotifications
   const selectedNotification = notifications.find((item) => item.id === selectedNotificationId) || null
   const [schoolNotices, setSchoolNotices] = useState<NoticeItem[]>([])
@@ -1172,6 +1496,13 @@ export function ParentNotifications({ selectedNotificationId }: { selectedNotifi
     return schoolNotices.find((n) => n.id === selectedNoticeId) ?? null
   }, [schoolNotices, selectedNoticeId])
 
+  const notificationAliases: Record<string, string> = {
+    '1': 'fee-balance-reminder',
+    '2': 'result-published',
+    '3': 'attendance-alert',
+  }
+  const activeNotificationId = selectedNotificationId ? notificationAliases[selectedNotificationId] ?? selectedNotificationId : null
+  const selectedNotification = notifications.find((item) => item.id === activeNotificationId) || null
   const highPriority = notifications.filter((item) => item.priority === 'High').length
   const categoryColor: Record<string, string> = {
     Meeting: GOLD,
@@ -1181,11 +1512,11 @@ export function ParentNotifications({ selectedNotificationId }: { selectedNotifi
   }
 
   useEffect(() => {
-    if (!selectedNotificationId) return
+    if (!activeNotificationId) return
 
-    const element = document.getElementById(`notification-${selectedNotificationId}`)
+    const element = document.getElementById(`notification-${activeNotificationId}`)
     element?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [selectedNotificationId])
+  }, [activeNotificationId])
 
   useEffect(() => {
     setSchoolNotices(getNoticesForRole('parent', []))
@@ -1285,11 +1616,11 @@ export function ParentNotifications({ selectedNotificationId }: { selectedNotifi
           <div style={{ padding: '6px 20px 18px' }}>
             {notifications.map((item, index) => {
               const color = categoryColor[item.category] || GOLD
-              const isSelected = item.id === selectedNotificationId
+              const isSelected = item.id === activeNotificationId
               return (
                 <Link
                   key={item.id}
-                  href={`/notifications?notification=${item.id}`}
+                  href={`${baseHref}${baseHref.includes('?') ? '&' : '?'}notification=${item.id}`}
                   id={`notification-${item.id}`}
                   style={{
                     display: 'grid',
@@ -1417,6 +1748,147 @@ export function ParentNotifications({ selectedNotificationId }: { selectedNotifi
         </Card>
         )}
       </div>
+    </div>
+  )
+}
+
+export function SchoolPolicyHandbook({ role }: { role: RoleType }) {
+  const keyPolicies = [
+    {
+      title: 'Attendance & Punctuality',
+      text: 'Students are expected to be in school before 7:45 AM. Repeated lateness, unexplained absence, or early pickup must be discussed with the class teacher.',
+    },
+    {
+      title: 'Uniform & Appearance',
+      text: 'Complete school uniform, proper footwear, student ID, and neat grooming are required on all school days and official activities.',
+    },
+    {
+      title: 'Digital Conduct',
+      text: 'Phones, tablets, and internet access must be used only when approved for learning. Recording, sharing, or posting school content without permission is not allowed.',
+    },
+    {
+      title: 'Assessment Integrity',
+      text: 'Students must complete tests, assignments, projects, and examinations honestly. Any form of cheating or impersonation is treated as a serious misconduct issue.',
+    },
+  ]
+
+  const handbookSections = [
+    ['Daily Arrival', 'Morning assembly begins at 7:50 AM. Students should report to class immediately after assembly.'],
+    ['Health & Safety', 'Report illness, injury, bullying, unsafe behavior, or damaged facilities to a teacher, nurse, or administrator immediately.'],
+    ['Parent Communication', 'Parents should use official portal messages, class teacher contact hours, or scheduled office visits for school matters.'],
+    ['Homework & Projects', 'Assignments should be submitted by the due date with the student name, class, subject, and teacher clearly stated.'],
+    ['Library & Labs', 'Books, laboratory materials, sports equipment, and ICT devices must be handled carefully and returned in good condition.'],
+    ['Discipline Steps', 'Correction may include verbal guidance, written reflection, parent conference, community service, suspension, or referral to management.'],
+  ]
+
+  const quickFacts = [
+    ['School Day', '7:45 AM - 3:00 PM'],
+    ['Class Teacher', mockData.student.formTeacher],
+    ['Current Term', `${mockData.term}, ${mockData.session}`],
+    ['Applies To', role === 'parent' ? 'All linked children' : mockData.student.class],
+  ]
+
+  return (
+    <div>
+      <div className='policy-hero' style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.25fr) minmax(260px,0.75fr)', gap: 16, marginBottom: 18, alignItems: 'stretch' }}>
+        <Card style={{ background: '#0D0D0D', color: '#FFFFFF', borderColor: '#222', overflow: 'hidden', position: 'relative', minHeight: 250 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, rgba(201,160,32,0.22), rgba(55,138,221,0.10) 42%, rgba(29,158,117,0.12))' }} />
+          <div style={{ position: 'relative', display: 'grid', gap: 18 }}>
+            <div style={{ width: 52, height: 52, borderRadius: 12, background: GOLD, color: '#0D0D0D', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <BookMarked size={25} />
+            </div>
+            <div>
+              <p style={{ margin: 0, color: GOLD, fontSize: 11, letterSpacing: 1.3, textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 900 }}>{mockData.schoolName}</p>
+              <h2 style={{ margin: '8px 0 0', color: '#FFFFFF', fontSize: 34, lineHeight: 1.12, fontFamily: "'Georgia',serif", fontWeight: 400 }}>School Policy & Student Handbook</h2>
+              <p style={{ margin: '12px 0 0', color: '#F5F0E8', fontSize: 14, lineHeight: 1.7, maxWidth: 760 }}>
+                A single reference for conduct, attendance, safety, academic expectations, and parent-student responsibilities.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <GoldBadge>Updated {mockData.session}</GoldBadge>
+              <GoldBadge color={BLUE}>{role === 'parent' ? 'Parent Copy' : 'Student Copy'}</GoldBadge>
+              <GoldBadge color={GREEN}>Active Policy</GoldBadge>
+            </div>
+          </div>
+        </Card>
+
+        <Card style={{ display: 'grid', gap: 12 }}>
+          <CardLabel>Quick Reference</CardLabel>
+          {quickFacts.map(([label, value]) => (
+            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderBottom: label !== 'Applies To' ? `1px solid ${BORDER}` : 'none' }}>
+              <span style={{ color: '#9B9590', fontSize: 11, fontWeight: 900, letterSpacing: 0.8, textTransform: 'uppercase' }}>{label}</span>
+              <span style={{ color: '#0D0D0D', fontSize: 13, fontWeight: 800, textAlign: 'right' }}>{value}</span>
+            </div>
+          ))}
+          <button
+            type='button'
+            onClick={() => window.print()}
+            style={{ marginTop: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#0D0D0D', border: 'none', color: '#FFFFFF', borderRadius: 8, padding: '11px 14px', fontSize: 12, fontWeight: 900, cursor: 'pointer' }}
+          >
+            <Printer size={14} /> Print Handbook
+          </button>
+        </Card>
+      </div>
+
+      <div className='policy-grid' style={{ display: 'grid', gridTemplateColumns: 'minmax(0,0.95fr) minmax(0,1.05fr)', gap: 16, alignItems: 'start' }}>
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+            <CardLabel>Core School Policies</CardLabel>
+            <GoldBadge color={RED}>Mandatory</GoldBadge>
+          </div>
+          <div style={{ display: 'grid', gap: 12 }}>
+            {keyPolicies.map((policy, index) => (
+              <div key={policy.title} style={{ display: 'grid', gridTemplateColumns: '36px 1fr', gap: 12, paddingBottom: index < keyPolicies.length - 1 ? 12 : 0, borderBottom: index < keyPolicies.length - 1 ? `1px solid ${BORDER}` : 'none' }}>
+                <div style={{ width: 36, height: 36, borderRadius: 9, background: `${GOLD}14`, border: `1px solid ${GOLD}33`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: GOLD, fontWeight: 900, fontFamily: 'monospace' }}>
+                  {index + 1}
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, color: '#0D0D0D', fontSize: 15, fontWeight: 850 }}>{policy.title}</h3>
+                  <p style={{ margin: '6px 0 0', color: '#5C5750', fontSize: 13, lineHeight: 1.6 }}>{policy.text}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+            <CardLabel>Student Handbook</CardLabel>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: GREEN, fontSize: 12, fontWeight: 900 }}>
+              <CheckCircle2 size={15} /> Available
+            </span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 10 }}>
+            {handbookSections.map(([title, text]) => (
+              <div key={title} style={{ background: '#FAFAF8', border: `1px solid ${BORDER}`, borderRadius: 8, padding: 13, minHeight: 120 }}>
+                <h3 style={{ margin: 0, color: '#0D0D0D', fontSize: 14, fontWeight: 850 }}>{title}</h3>
+                <p style={{ margin: '8px 0 0', color: '#5C5750', fontSize: 12, lineHeight: 1.55 }}>{text}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      <Card style={{ marginTop: 16, background: `${BLUE}0D`, borderColor: `${BLUE}33` }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 12, alignItems: 'start' }}>
+          <AlertCircle size={20} color={BLUE} />
+          <div>
+            <p style={{ margin: 0, color: '#0D0D0D', fontSize: 14, fontWeight: 900 }}>Acknowledgement</p>
+            <p style={{ margin: '6px 0 0', color: '#5C5750', fontSize: 13, lineHeight: 1.65 }}>
+              Students and parents are expected to review this handbook each term. Questions should be directed to the class teacher or school administration through the official portal.
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      <style jsx>{`
+        @media (max-width: 900px) {
+          .policy-hero,
+          .policy-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </div>
   )
 }
@@ -1654,7 +2126,7 @@ export function ParentSwitch({ activeChild, setActiveChild }: { activeChild: num
         <CardLabel>Quick Summary — {mockData.children[activeChild].name}</CardLabel>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
           <StatCard label='Class' value={mockData.children[activeChild].class} sub={mockData.children[activeChild].level} color={GOLD} />
-          <StatCard label='Attendance' value='87%' sub='This term' color={GREEN} />
+          <AttendanceBarChart compact />
           <StatCard label='Fees Due' value='₦35k' sub='Balance' color={RED} />
           <StatCard label='Position' value='4th' sub='In class' color={BLUE} />
         </div>

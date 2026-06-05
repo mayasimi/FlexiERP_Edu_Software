@@ -11,14 +11,18 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
 // ─── Axios Instance ─────────────────────────────────────────────────────────
 const api: AxiosInstance = axios.create({
   baseURL: API_URL,
-  headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-  withCredentials: true, // for Laravel Sanctum cookie auth
+  headers: { 
+    'Content-Type': 'application/json', 
+    Accept: 'application/json',
+    'ngrok-skip-browser-warning': 'true', 
+  },
+  withCredentials: true,
 })
 
 // ─── Request Interceptor: attach Bearer token ────────────────────────────────
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (typeof window !== 'undefined') {
-    const token = sessionStorage.getItem('edu_token')
+    const token = localStorage.getItem('flexi_token')  // ← was sessionStorage 'edu_token'
     if (token) config.headers.Authorization = `Bearer ${token}`
   }
   return config
@@ -28,9 +32,10 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 api.interceptors.response.use(
   (res: AxiosResponse) => res,
   (error) => {
-    const authBypassEnabled = ['1', 'true', 'yes'].includes((process.env.NEXT_PUBLIC_AUTH_BYPASS ?? '').toLowerCase())
-    if (error.response?.status === 401 && typeof window !== 'undefined' && !authBypassEnabled) {
-      sessionStorage.removeItem('edu_token')
+    if (error.response?.status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('flexi_token')   // ← was sessionStorage 'edu_token'
+      localStorage.removeItem('flexi_user')
+      localStorage.removeItem('edu_user_role')
       window.location.href = '/login'
     }
     return Promise.reject(error)
@@ -61,76 +66,55 @@ export const dashboardApi = {
   getQuickStats: () => api.get('/dashboard/stats'),
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ADMISSION  →  Laravel: App\Http\Controllers\AdmissionController
-// ─────────────────────────────────────────────────────────────────────────────
-export interface AdmissionFilters {
-  status?: string
-  program?: string
-  date_from?: string
-  date_to?: string
-  page?: number
-  per_page?: number
+//PAYROLL
+export const payrollApi = {
+  getMyPayslips: () => api.get('/payroll/my-payslips'),
 }
 
-export const admissionApi = {
-  list: (filters: AdmissionFilters = {}) =>
-    api.get('/admissions', { params: filters }),
-  show: (id: string) => api.get(`/admissions/${id}`),
-  create: (data: Record<string, unknown>) => api.post('/admissions', data),
-  update: (id: string, data: Record<string, unknown>) => api.put(`/admissions/${id}`, data),
-  updateStatus: (id: string, status: string) =>
-    api.patch(`/admissions/${id}/status`, { status }),
-  delete: (id: string) => api.delete(`/admissions/${id}`),
+// STAFF
+export const staffApi = {
+  list: (params: { page?: number; search?: string; department?: string; role?: string; status?: string; per_page?: number }) =>
+    api.get('/staff', { params }),
+  show: (id: number) => api.get(`/staff/${id}`),
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FEE MANAGEMENT  →  Laravel: App\Http\Controllers\FeeController
-// ─────────────────────────────────────────────────────────────────────────────
-export const feeApi = {
-  getDashboard: () => api.get('/fees/dashboard'),
-  listFeeTypes: (params?: Record<string, unknown>) => api.get('/fees/types', { params }),
-  recordPayment: (data: Record<string, unknown>) => api.post('/fees/payments', data),
-  getTransactions: (params?: Record<string, unknown>) => api.get('/fees/transactions', { params }),
-  getStudentFees: (studentId: string) => api.get(`/fees/student/${studentId}`),
-  generateInvoice: (paymentId: string) => api.get(`/fees/invoice/${paymentId}`),
-  getOverdueList: () => api.get('/fees/overdue'),
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PAYROLL PAYMENTS → Laravel: App\Http\Controllers\PayrollController
-// ─────────────────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
-// ACADEMICS / COURSES  →  Laravel: App\Http\Controllers\AcademicsController
-// ─────────────────────────────────────────────────────────────────────────────
+// ACADEMICS
 export const academicsApi = {
   getClasses: () => api.get('/academics/classes'),
-  getSections: (classId: string) => api.get(`/academics/classes/${classId}/sections`),
-  getSubjects: (classId: string, sectionId?: string) =>
-    api.get(`/academics/subjects`, { params: { class_id: classId, section_id: sectionId } }),
-  createSubject: (data: Record<string, unknown>) => api.post('/academics/subjects', data),
-  updateSubject: (id: string, data: Record<string, unknown>) =>
-    api.put(`/academics/subjects/${id}`, data),
-  deleteSubject: (id: string) => api.delete(`/academics/subjects/${id}`),
+  // section_id is the numeric ID returned from getClasses
+  getSubjects: (classId: string, sectionId: string) =>
+    api.get('/academics/subjects', { params: { class_id: classId, section_id: sectionId } }),
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ATTENDANCE  →  Laravel: App\Http\Controllers\AttendanceController
-// ─────────────────────────────────────────────────────────────────────────────
+// ADMISSIONS
+export const admissionApi = {
+  list: (params: {
+    status?: string; date_from?: string; date_to?: string;
+    program?: string; page?: number; per_page?: number;
+  }) => api.get('/admissions', { params }),
+  create: (data: { first_name: string; last_name: string; program: string; date_applied: string; email?: string; phone?: string }) =>
+    api.post('/admissions', data),
+}
+
+// ATTENDANCE
 export const attendanceApi = {
   getStudents: (params: { class_id: string; section_id: string; subject_id?: string; date: string }) =>
     api.get('/attendance/students', { params }),
   saveAttendance: (data: {
-    class_id: string
-    section_id: string
-    subject_id: string
-    date: string
-    attendance: Array<{ student_id: string; status: 'P' | 'A' | 'L' | 'S' }>
+    section_id: string; date: string;
+    attendance: { student_id: string; status: string }[];
   }) => api.post('/attendance/save', data),
-  getSummary: (params: { class_id: string; section_id: string; date: string }) =>
-    api.get('/attendance/summary', { params }),
-  getMonthly: (params: { class_id: string; section_id: string; month: string; year: string }) =>
-    api.get('/attendance/monthly', { params }),
+}
+
+// FEES
+export const feeApi = {
+  getDashboard: () => api.get('/fees/dashboard'),
+}
+
+// INVENTORY
+export const inventoryApi = {
+  list: (params?: { category?: string; status?: string }) =>
+    api.get('/inventory', { params }),
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -145,25 +129,21 @@ export const timetableApi = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STAFF  →  Laravel: App\Http\Controllers\StaffController
-// ─────────────────────────────────────────────────────────────────────────────
-export const staffApi = {
-  list: (params?: Record<string, unknown>) => api.get('/staff', { params }),
-  show: (id: string) => api.get(`/staff/${id}`),
-  create: (data: FormData) =>
-    api.post('/staff', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  update: (id: string, data: FormData) =>
-    api.post(`/staff/${id}?_method=PUT`, data, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  delete: (id: string) => api.delete(`/staff/${id}`),
-  getDepartments: () => api.get('/staff/departments'),
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // STUDENTS  →  Laravel: App\Http\Controllers\StudentController
 // ─────────────────────────────────────────────────────────────────────────────
 export const studentApi = {
-  list: (params?: Record<string, unknown>) => api.get('/students', { params }),
-  show: (id: string) => api.get(`/students/${id}`),
+
+  list: (params: {
+      page?: number
+      search?: string
+      grade?: string
+      status?: string
+      per_page?: number
+    }) => api.get('/students', { params }),
+
+    show: (studentId: string) =>
+      api.get(`/students/${studentId}`),
+
   create: (data: FormData) =>
     api.post('/students', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
   update: (id: string, data: FormData) =>
@@ -184,18 +164,6 @@ export const examApi = {
   generateReportCard: (studentId: string, examId: string) =>
     api.get(`/exams/report-card`, { params: { student_id: studentId, exam_id: examId } }),
   getGradingScale: () => api.get('/exams/grading-scale'),
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// INVENTORY  →  Laravel: App\Http\Controllers\InventoryController
-// ─────────────────────────────────────────────────────────────────────────────
-export const inventoryApi = {
-  list: (params?: Record<string, unknown>) => api.get('/inventory', { params }),
-  show: (id: string) => api.get(`/inventory/${id}`),
-  addStock: (data: Record<string, unknown>) => api.post('/inventory/stock/add', data),
-  issueItem: (data: Record<string, unknown>) => api.post('/inventory/issue', data),
-  getCategories: () => api.get('/inventory/categories'),
-  getLowStockAlerts: () => api.get('/inventory/low-stock'),
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -254,4 +222,54 @@ export const reportCardApi = {
   // POST /api/report-card/bulk-generate  → returns ZIP of PDFs
   bulkGenerate: (data: Record<string, unknown>) =>
     api.post('/report-card/bulk-generate', data, { responseType: 'blob' }),
+}
+
+// ── TEACHER API ───────────────────────────────────────────────────────────────
+
+export const teacherApi = {
+  // DashboardSection: stats + today schedule + pending attendance + assessments
+  getDashboard: () => api.get('/teacher/dashboard'),
+
+  // ScheduleSection: full weekly timetable
+  getSchedule: (day?: string) => api.get('/teacher/schedule', { params: { day } }),
+
+  // GroupsSection: teacher's class sections
+  getGroups: () => api.get('/teacher/groups'),
+  getGroupStudents: (sectionId: string) => api.get(`/teacher/groups/${sectionId}/students`),
+
+  // AssessmentSection: assessments list + grading
+  getAssessments: (sectionId?: string) =>
+    api.get('/teacher/assessments', { params: { section_id: sectionId } }),
+  getAssessmentGrades: (assessmentId: string) =>
+    api.get(`/teacher/assessments/${assessmentId}/grades`),
+  saveGrades: (assessmentId: string, grades: { student_id: string; marks: number | null; remarks: string }[]) =>
+    api.post(`/teacher/assessments/${assessmentId}/grades`, { grades }),
+
+  // PerformanceSection: analytics
+  getPerformance: (sectionId?: string) =>
+    api.get('/teacher/performance', { params: { section_id: sectionId } }),
+
+  // LessonPlanSection
+  getLessonPlans: () => api.get('/teacher/lesson-plans'),
+
+  // MessagesSection
+  getMessages: () => api.get('/teacher/messages'),
+  sendMessage: (conversationId: string, body: string, subject?: string) =>
+    api.post('/teacher/messages', { conversation_id: conversationId, body, subject }),
+}
+
+// ── STUDENT / PARENT PORTAL API ───────────────────────────────────────────────
+
+export const portalApi = {
+  // PortalViews Dashboard component
+  getDashboard: () => api.get('/portal/dashboard'),
+
+  // SubjectsView: subjects with CA scores
+  getSubjects: () => api.get('/portal/subjects'),
+
+  // AttendanceView: weekly attendance records and selected-week reports
+  getAttendance: (params?: { weekStart?: string }) => api.get('/portal/attendance', { params }),
+
+  // FeesView: fee breakdown + payment history
+  getFees: () => api.get('/portal/fees'),
 }
