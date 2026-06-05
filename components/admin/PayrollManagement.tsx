@@ -1,18 +1,19 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import toast from 'react-hot-toast'
 import AppLayout from '@/components/layout/AppLayout'
 import Topbar from '@/components/layout/Topbar'
 import type { PayrollFilter, PayrollPayment, Staff } from '@/types/payroll'
-import { Banknote, ChevronDown } from 'lucide-react'
+import { Banknote, Calculator, ChevronDown, ShieldCheck } from 'lucide-react'
 import DashboardPage from './payroll/DashboardPage'
 import GeneratePayslipPage from './payroll/GeneratePayslipPage'
 import PaymentHistoryPage from './payroll/PaymentHistoryPage'
 import PayslipHistoryPage from './payroll/PayslipHistoryPage'
 import {
   ADMIN_EMAIL,
+  currency,
   INITIAL_PAYMENTS,
   INITIAL_PAYSLIPS,
   INITIAL_STAFF,
@@ -48,6 +49,16 @@ export default function PayrollManagement() {
   const [paymentStaffIds, setPaymentStaffIds] = useState<string[]>([])
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([])
   const [isPayrollMenuOpen, setIsPayrollMenuOpen] = useState(false)
+  const payrollMenuRef = useRef<HTMLDivElement | null>(null)
+  const [verifyReference, setVerifyReference] = useState('PAYROLL-DEMO-20260604')
+  const [verificationStatus, setVerificationStatus] = useState('')
+  const [taxResult, setTaxResult] = useState<{
+    tax_amount: number
+    taxable_income: number
+    relief: number
+    firs_reference: string
+    breakdown: Array<{ band: string; rate: number; taxable: number; tax: number }>
+  } | null>(null)
   const [payslipForm, setPayslipForm] = useState<PayslipForm>({
     employeeId: INITIAL_STAFF[0].id,
     payPeriod: '2026-05',
@@ -67,6 +78,19 @@ export default function PayrollManagement() {
   useEffect(() => {
     window.localStorage.setItem(PAYROLL_PAYMENTS_STORAGE_KEY, JSON.stringify(payments))
   }, [payments])
+
+  useEffect(() => {
+    if (!isPayrollMenuOpen) return
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!payrollMenuRef.current?.contains(event.target as Node)) {
+        setIsPayrollMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [isPayrollMenuOpen])
 
   const summary = useMemo(() => {
     return staff.reduce(
@@ -159,16 +183,40 @@ export default function PayrollManagement() {
     )
   }
 
-  const openPayrollPayment = (members: Staff[]) => {
+  const openPayrollPayment = async (members: Staff[]) => {
     if (members.length === 0) {
       setPaymentNotice('There are no pending payroll records to pay.')
       toast.error('There are no pending payroll records to pay.')
       return
     }
 
+    const payment = makePayrollPayment(members)
     setPaymentNotice('')
+
+    try {
+      const response = await fetch('/api/payroll/initiate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: payment.amount,
+          staff_ids: members.map((member) => member.id),
+          payroll_period_id: payslipForm.payPeriod,
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.message || 'Unable to initiate payroll payment.')
+
+      setVerifyReference(payload.data.reference)
+      setPaymentNotice(`Paystack payroll initialized. Reference: ${payload.data.reference}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to initiate payroll payment.'
+      setPaymentNotice(message)
+      toast.error(message)
+      return
+    }
+
     setPaymentStaffIds(members.map((member) => member.id))
-    setPaystackPayment(makePayrollPayment(members))
+    setPaystackPayment(payment)
   }
 
   const runPendingPayroll = () => {
@@ -179,8 +227,10 @@ export default function PayrollManagement() {
     openPayrollPayment(selectedStaff)
   }
 
-  const handlePaymentSuccess = ({ reference }: { staffId: string; reference: string; amount: number }) => {
+  const handlePaymentSuccess = async ({ reference }: { staffId: string; reference: string; amount: number }) => {
     const paidMembers = staff.filter((member) => paymentStaffIds.includes(member.id))
+
+    await fetch(`/api/payroll/verify/${encodeURIComponent(verifyReference || reference)}`).catch(() => undefined)
 
     setStaff((currentStaff) =>
       currentStaff.map((member) =>
@@ -234,6 +284,45 @@ export default function PayrollManagement() {
     toast.success(`Payslip generated for ${selectedEmployee.name}.`)
   }
 
+  const verifyPayrollReference = async () => {
+    if (!verifyReference.trim()) {
+      setVerificationStatus('Enter a payroll reference to verify.')
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/payroll/verify/${encodeURIComponent(verifyReference.trim())}`)
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.message || 'Unable to verify payroll payment.')
+      setVerificationStatus(`Status: ${payload.data.status} / Amount: ${currency(payload.data.amount)} / Verified: ${payload.data.verified_at ? 'Yes' : 'No'}`)
+    } catch (error) {
+      setVerificationStatus(error instanceof Error ? error.message : 'Unable to verify payroll payment.')
+    }
+  }
+
+  const calculateSelectedTax = async () => {
+    const employee = selectedStaff[0] || selectedEmployee
+
+    try {
+      const response = await fetch('/api/payroll/calculate-tax', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staff_id: employee.id,
+          gross_pay: employee.currentPay,
+          pension: Number(payslipForm.pension || 0),
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.message || 'Unable to calculate FIRS tax.')
+      setTaxResult(payload.data)
+      setPayslipForm((current) => ({ ...current, employeeId: employee.id, tax: String(payload.data.tax_amount) }))
+      toast.success(`Tax calculated for ${employee.name}.`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to calculate FIRS tax.')
+    }
+  }
+
   return (
     <AppLayout>
       <Topbar action={{ label: 'Pay All', onClick: runPendingPayroll }} />
@@ -249,7 +338,7 @@ export default function PayrollManagement() {
             </div>
           </div>
 
-          <div className="relative z-[100]" onMouseEnter={() => setIsPayrollMenuOpen(true)} onMouseLeave={() => setIsPayrollMenuOpen(false)}>
+          <div ref={payrollMenuRef} className="relative z-[100]">
             <button type="button" onClick={() => setIsPayrollMenuOpen((current) => !current)} className="btn-gold rounded-full px-5 py-2.5 shadow-sm">
               <Banknote size={16} />
               Payroll
@@ -286,26 +375,60 @@ export default function PayrollManagement() {
 
       <div className="relative z-0 px-6 pb-8">
         {activePage === 'dashboard' && (
-          <DashboardPage
-            allVisibleUnpaidSelected={allVisibleUnpaidSelected}
-            filter={filter}
-            filteredStaff={filteredStaff}
-            paymentNotice={paymentNotice}
-            paySelectedPayroll={paySelectedPayroll}
-            payStaff={(member) => openPayrollPayment([member])}
-            query={query}
-            runPendingPayroll={runPendingPayroll}
-            selectedStaff={selectedStaff}
-            selectedStaffIds={selectedStaffIds}
-            selectedTotal={selectedTotal}
-            setFilter={setFilter}
-            setQuery={setQuery}
-            summary={summary}
-            togglePaid={togglePaid}
-            toggleStaffSelection={toggleStaffSelection}
-            toggleVisibleSelection={toggleVisibleSelection}
-            updatePay={updatePay}
-          />
+          <>
+            <DashboardPage
+              allVisibleUnpaidSelected={allVisibleUnpaidSelected}
+              filter={filter}
+              filteredStaff={filteredStaff}
+              paymentNotice={paymentNotice}
+              paySelectedPayroll={paySelectedPayroll}
+              payStaff={(member) => openPayrollPayment([member])}
+              query={query}
+              runPendingPayroll={runPendingPayroll}
+              selectedStaff={selectedStaff}
+              selectedStaffIds={selectedStaffIds}
+              selectedTotal={selectedTotal}
+              setFilter={setFilter}
+              setQuery={setQuery}
+              summary={summary}
+              togglePaid={togglePaid}
+              toggleStaffSelection={toggleStaffSelection}
+              toggleVisibleSelection={toggleVisibleSelection}
+              updatePay={updatePay}
+            />
+
+            <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <div className="card">
+                <div className="mb-3 flex items-center gap-2">
+                  <ShieldCheck size={18} style={{ color: '#10B981' }} />
+                  <h2 className="font-bold">Paystack Verification</h2>
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <input value={verifyReference} onChange={(event) => setVerifyReference(event.target.value)} className="input" placeholder="Payroll payment reference" />
+                  <button type="button" onClick={verifyPayrollReference} className="btn-gold whitespace-nowrap">Check Status</button>
+                </div>
+                {verificationStatus && <p className="mt-3 text-sm font-semibold" style={{ color: '#6B6660' }}>{verificationStatus}</p>}
+              </div>
+
+              <div className="card">
+                <div className="mb-3 flex items-center gap-2">
+                  <Calculator size={18} style={{ color: '#C9A020' }} />
+                  <h2 className="font-bold">FIRS Tax Calculation</h2>
+                </div>
+                <p className="mb-3 text-sm" style={{ color: '#6B6660' }}>
+                  Uses selected staff, or the payslip employee when no staff is selected.
+                </p>
+                <button type="button" onClick={calculateSelectedTax} className="btn-outline">Calculate Tax</button>
+                {taxResult && (
+                  <div className="mt-4 rounded-lg p-3" style={{ background: '#F7F6F3', border: '1px solid #E4E1D8' }}>
+                    <div className="flex justify-between gap-3 text-sm"><span>Taxable income</span><strong>{currency(taxResult.taxable_income)}</strong></div>
+                    <div className="mt-2 flex justify-between gap-3 text-sm"><span>Monthly PAYE</span><strong>{currency(taxResult.tax_amount)}</strong></div>
+                    <div className="mt-2 flex justify-between gap-3 text-xs" style={{ color: '#6B6660' }}><span>FIRS reference</span><span>{taxResult.firs_reference}</span></div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
         )}
 
         {activePage === 'generate' && (

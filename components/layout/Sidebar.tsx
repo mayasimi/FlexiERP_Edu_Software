@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, UserPlus, CreditCard, BookOpen, Package,
@@ -55,7 +55,10 @@ const parentNavItems = [
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { role, user, logout, mounted } = useAuthStoreMounted()
+  const [resultsOpen, setResultsOpen] = useState(false)
+  const resultsTab = searchParams.get('tab') || 'view'
 
   // Return null on server to prevent hydration mismatch
   if (!mounted) return null

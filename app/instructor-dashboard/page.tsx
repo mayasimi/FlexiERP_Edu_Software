@@ -33,7 +33,9 @@ const sidebarItems: { id: Section; label: string; icon: typeof LayoutDashboard }
 
 export default function InstructorDashboardPage() {
   const [activeSection, setActiveSection] = useState<Section>('dashboard')
+  const [assessmentOpen, setAssessmentOpen] = useState(false)
   const { user, logout, mounted } = useAuthStoreMounted()
+  const isAssessmentActive = activeSection === 'assessment' || activeSection === 'assessment-input' || activeSection === 'assessment-view'
 
   // Real name and initials from the authenticated teacher
   const displayName = (mounted ? user?.name : null) || 'Teacher'
@@ -237,6 +239,8 @@ export default function InstructorDashboardPage() {
         {activeSection === 'attendance'   && <AttendanceSection  />}
         {activeSection === 'schedule'     && <ScheduleSection    />}
         {activeSection === 'assessment'   && <AssessmentSection  />}
+        {activeSection === 'assessment-input' && <AssessmentSection mode="input" />}
+        {activeSection === 'assessment-view' && <AssessmentSection mode="view" />}
         {activeSection === 'lesson-plans' && <LessonPlanSection  />}
         {activeSection === 'groups'       && <GroupsSection      />}
         {activeSection === 'performance'  && <PerformanceSection />}

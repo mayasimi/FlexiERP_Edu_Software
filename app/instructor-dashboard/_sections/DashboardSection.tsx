@@ -6,6 +6,31 @@ import { StatCard } from '../_components'
 import { MOCK_TODAY_SCHEDULE, MOCK_PENDING_ATTENDANCE, MOCK_UPCOMING_ASSESSMENTS } from '../_mock-data'
 import type { Section } from '../_types'
 
+type DashboardScheduleSlot = {
+  id: string
+  time: string
+  subject: string
+  group: string
+  room: string
+  status?: string
+}
+
+type PendingAttendanceItem = {
+  id: string
+  group: string
+  subject: string
+  students: number
+}
+
+type UpcomingAssessmentItem = {
+  id: string
+  type: string
+  maxMarks: number
+  title: string
+  group: string
+  date: string
+}
+
 const scheduleStatusStyle: Record<string, { bg: string; text: string; label: string }> = {
   completed: { bg: '#ECFDF5', text: '#065F46', label: 'Completed' },
   live: { bg: '#FEF3C7', text: '#92400E', label: 'In Progress' },
@@ -28,9 +53,9 @@ export default function DashboardSection({ onNavigate }: Props) {
   })
 
   const stats = data?.stats ?? { totalClasses: 0, totalStudents: 0, attendanceRate: 0, pendingGrading: 0 }
-  const todaySchedule = data?.today_schedule ?? []
-  const pendingAttendance = data?.pending_attendance ?? []
-  const upcomingAssessments = data?.upcoming_assessments ?? []
+  const todaySchedule: DashboardScheduleSlot[] = data?.today_schedule ?? []
+  const pendingAttendance: PendingAttendanceItem[] = data?.pending_attendance ?? []
+  const upcomingAssessments: UpcomingAssessmentItem[] = data?.upcoming_assessments ?? []
 
   return (
     <div>
