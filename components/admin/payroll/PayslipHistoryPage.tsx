@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Banknote, CalendarDays, Download, Eye, FileText, Search, X } from 'lucide-react'
 import { currency, HistoryTable, SummaryCard, type PayslipRecord } from './shared'
@@ -116,15 +116,40 @@ function PayslipDetailModal({ onClose, payslip }: { onClose: () => void; payslip
   const totalEarnings = payslip.basicSalary + payslip.allowances + payslip.bonus + payslip.overtime
   const totalDeductions = payslip.deductions + payslip.tax + payslip.pension
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4" role="presentation" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="payslip-detail-title" className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4" role="presentation" onMouseDown={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="payslip-detail-title"
+        className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="flex items-start justify-between gap-4 px-6 py-5 text-white" style={{ background: 'linear-gradient(135deg, #0D0D0D, #2A2A2A)' }}>
           <div>
             <h2 id="payslip-detail-title" className="text-xl font-bold">Payslip Details</h2>
             <p className="mt-1 text-sm opacity-80">{payslip.id} / {payslip.payPeriod}</p>
           </div>
-          <button type="button" onClick={onClose} className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 transition-all hover:bg-white/20" aria-label="Close payslip detail">
+          <button
+            type="button"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              onClose()
+            }}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-white/10 transition-all hover:bg-white/20"
+            aria-label="Close payslip detail"
+          >
             <X size={18} />
           </button>
         </div>
@@ -168,7 +193,17 @@ function PayslipDetailModal({ onClose, payslip }: { onClose: () => void; payslip
 
           <div className="flex flex-wrap justify-end gap-2">
             <button type="button" onClick={() => toast.success('Payslip PDF downloaded.')} className="btn-outline"><Download size={15} />Download PDF</button>
-            <button type="button" onClick={onClose} className="btn-gold">Close</button>
+            <button
+              type="button"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation()
+                onClose()
+              }}
+              className="btn-gold"
+            >
+              Close
+            </button>
           </div>
         </div>
       </div>
