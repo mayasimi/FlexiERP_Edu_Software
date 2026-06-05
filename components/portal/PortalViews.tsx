@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { portalApi } from '@/lib/api'
 import dynamic from 'next/dynamic'
@@ -142,6 +142,127 @@ function printElementById(elementId: string, title: string) {
     printWindow.print()
     printWindow.close()
   }, 250)
+}
+
+async function inlineImages(element: HTMLElement) {
+  const images = Array.from(element.querySelectorAll('img'))
+  await Promise.all(images.map(async (image) => {
+    const src = image.getAttribute('src')
+    if (!src || src.startsWith('data:')) return
+
+    try {
+      const response = await fetch(src)
+      const blob = await response.blob()
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onloadend = () => resolve(String(reader.result))
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+      image.setAttribute('src', dataUrl)
+    } catch {
+      image.remove()
+    }
+  }))
+}
+
+function imageDataToPdf(imageDataUrl: string, width: number, height: number) {
+  const pageWidth = 595.28
+  const pageHeight = 841.89
+  const margin = 28
+  const maxWidth = pageWidth - margin * 2
+  const maxHeight = pageHeight - margin * 2
+  const scale = Math.min(maxWidth / width, maxHeight / height)
+  const imageWidth = width * scale
+  const imageHeight = height * scale
+  const x = (pageWidth - imageWidth) / 2
+  const y = (pageHeight - imageHeight) / 2
+  const imageBinary = atob(imageDataUrl.split(',')[1] || '')
+  const parts: string[] = []
+  const offsets: number[] = []
+  const add = (value: string) => {
+    offsets.push(parts.join('').length)
+    parts.push(value)
+  }
+
+  parts.push('%PDF-1.4\n')
+  add('1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n')
+  add('2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n')
+  add(`3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /XObject << /Im1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n`)
+  add(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${Math.round(width)} /Height ${Math.round(height)} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imageBinary.length} >>\nstream\n${imageBinary}\nendstream\nendobj\n`)
+
+  const content = `q\n${imageWidth.toFixed(2)} 0 0 ${imageHeight.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} cm\n/Im1 Do\nQ\n`
+  add(`5 0 obj\n<< /Length ${content.length} >>\nstream\n${content}endstream\nendobj\n`)
+
+  const xrefOffset = parts.join('').length
+  parts.push(`xref\n0 6\n0000000000 65535 f \n${offsets.map((offset) => `${String(offset).padStart(10, '0')} 00000 n `).join('\n')}\n`)
+  parts.push(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`)
+
+  const pdf = parts.join('')
+  const bytes = new Uint8Array(pdf.length)
+  for (let index = 0; index < pdf.length; index += 1) {
+    bytes[index] = pdf.charCodeAt(index)
+  }
+  return new Blob([bytes], { type: 'application/pdf' })
+}
+
+async function downloadReceiptDesign(element: HTMLElement | null, receipt: { id?: string; ref: string }) {
+  if (!element || typeof window === 'undefined') return
+
+  const clone = element.cloneNode(true) as HTMLElement
+  clone.querySelectorAll('[data-receipt-export-hidden="true"]').forEach((node) => node.remove())
+  clone.style.width = `${element.offsetWidth}px`
+  clone.style.maxHeight = 'none'
+  clone.style.overflow = 'visible'
+  clone.style.borderRadius = '14px'
+  await inlineImages(clone)
+
+  const wrapper = document.createElement('div')
+  wrapper.style.position = 'fixed'
+  wrapper.style.left = '-10000px'
+  wrapper.style.top = '0'
+  wrapper.style.background = '#FFFFFF'
+  wrapper.appendChild(clone)
+  document.body.appendChild(wrapper)
+
+  try {
+    const rect = clone.getBoundingClientRect()
+    const scale = Math.min(window.devicePixelRatio || 2, 3)
+    const serialized = new XMLSerializer().serializeToString(clone)
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${rect.width}" height="${rect.height}">
+        <foreignObject width="100%" height="100%">
+          <div xmlns="http://www.w3.org/1999/xhtml">${serialized}</div>
+        </foreignObject>
+      </svg>
+    `
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = reject
+      img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+    })
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.ceil(rect.width * scale)
+    canvas.height = Math.ceil(rect.height * scale)
+    const context = canvas.getContext('2d')
+    if (!context) return
+    context.fillStyle = '#FFFFFF'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+    const pdf = imageDataToPdf(canvas.toDataURL('image/jpeg', 0.95), canvas.width, canvas.height)
+    const url = URL.createObjectURL(pdf)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `receipt-${(receipt.id || receipt.ref).replace(/[^a-z0-9-]/gi, '-')}.pdf`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 500)
+  } finally {
+    wrapper.remove()
+  }
 }
 
 export function Dashboard({ role }: { role: RoleType }) {
@@ -345,6 +466,7 @@ export function Fees() {
   const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryItem[]>(fees.history)
   const [selectedReceipt, setSelectedReceipt] = useState<PaymentHistoryItem | null>(null)
   const [currentTermPaid, setCurrentTermPaid] = useState(50000)
+  const receiptRef = useRef<HTMLDivElement | null>(null)
   const totalDue = feeItems.reduce((sum, fee) => sum + fee.amount, 0)
   const totalPaid = paymentHistory.reduce((sum, fee) => sum + fee.amount, 0)
   const balance = Math.max(totalDue - currentTermPaid, 0)
@@ -474,6 +596,7 @@ export function Fees() {
           style={{ position: 'fixed', inset: 0, background: 'rgba(13,13,13,0.56)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}
         >
           <div
+            ref={receiptRef}
             onClick={(event) => event.stopPropagation()}
             style={{ width: 'min(620px,100%)', maxHeight: '90vh', overflowY: 'auto', background: '#FFFFFF', borderRadius: 14, border: `1px solid ${BORDER}`, boxShadow: '0 24px 70px rgba(13,13,13,0.28)' }}
           >
@@ -492,6 +615,7 @@ export function Fees() {
                 type='button'
                 onClick={() => setSelectedReceipt(null)}
                 aria-label='Close receipt'
+                data-receipt-export-hidden='true'
                 style={{ border: `1px solid ${GOLD}55`, background: 'transparent', color: GOLD, borderRadius: 8, width: 34, height: 34, fontSize: 18, lineHeight: 1, cursor: 'pointer', flexShrink: 0 }}
               >
                 ×
@@ -549,7 +673,7 @@ export function Fees() {
                 </p>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+              <div data-receipt-export-hidden='true' style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
                 <button
                   type='button'
                   onClick={() => setSelectedReceipt(null)}
@@ -557,13 +681,13 @@ export function Fees() {
                 >
                   Close
                 </button>
-                <a
-                  href={`/api/payments/${encodeURIComponent(selectedReceipt.id || selectedReceipt.ref)}/receipt`}
-                  download
+                <button
+                  type='button'
+                  onClick={() => downloadReceiptDesign(receiptRef.current, selectedReceipt)}
                   style={{ border: 'none', color: '#0D0D0D', background: GOLD, fontSize: 12, padding: '10px 15px', borderRadius: 8, fontWeight: 900, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
                 >
                   Download Receipt
-                </a>
+                </button>
               </div>
             </div>
           </div>
