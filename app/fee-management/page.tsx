@@ -1,10 +1,10 @@
 'use client'
 import { useQuery } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import Topbar from '@/components/layout/Topbar'
 import { feeApi } from '@/lib/api'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, getAcademicTerms, getActiveTermId, getClassLevelsFromDirectory, type AcademicTerm, withTermKey } from '@/lib/utils'
 import { Building2, AlertTriangle, Clock, Pencil, Plus, Trash2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -45,6 +45,11 @@ type FeeItem = {
   status: string
 }
 
+type FeeTransaction = (typeof MOCK_FEE.recent_transactions)[number] & { id: number | string }
+
+const FEE_ITEMS_STORAGE_KEY = 'edu_fee_items_v1'
+const FEE_TRANSACTIONS_STORAGE_KEY = 'edu_fee_transactions_v1'
+
 export default function FeeManagementPage() {
   const { data = MOCK_FEE } = useQuery<FeeDashboard>({
     queryKey: ['fee-dashboard'],
@@ -53,11 +58,99 @@ export default function FeeManagementPage() {
   })
 
   const [feeItems, setFeeItems] = useState<FeeItem[]>(() => (data.fee_types as FeeItem[]).map((f) => ({ ...f })))
+  const [transactions, setTransactions] = useState<FeeTransaction[]>(() => (data.recent_transactions as FeeTransaction[]).map((t) => ({ ...t })))
   const [selectedClass, setSelectedClass] = useState('All Classes')
+  const [hasMounted, setHasMounted] = useState(false)
+  const [classLevels, setClassLevels] = useState<string[]>(['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'])
+  const [termIdOverride, setTermIdOverride] = useState<string>('')
+  const [activeTermId, setActiveTermId] = useState<string>('')
+  const [terms, setTerms] = useState<AcademicTerm[]>([])
+  const [hasLoadedFinanceStore, setHasLoadedFinanceStore] = useState(false)
+
+  useEffect(() => setHasMounted(true), [])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    setActiveTermId(getActiveTermId(''))
+    setTerms(getAcademicTerms([]))
+  }, [hasMounted])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    if (typeof window === 'undefined') return
+    const read = () => {
+      const params = new URLSearchParams(window.location.search)
+      const term = (params.get('term') ?? '').trim()
+      setTermIdOverride(term)
+    }
+    read()
+    window.addEventListener('locationchange', read)
+    return () => window.removeEventListener('locationchange', read)
+  }, [hasMounted])
+
+  const termKey = useMemo(() => termIdOverride.trim(), [termIdOverride])
+  const isHistoryMode = useMemo(() => {
+    if (!termKey) return false
+    if (!activeTermId) return true
+    return termKey !== activeTermId
+  }, [activeTermId, termKey])
+
+  const termLabel = useMemo(() => {
+    if (!termKey) return ''
+    const found = terms.find((t) => t.id === termKey) ?? null
+    return found?.name ?? ''
+  }, [termKey, terms])
+
+  const storageKey = (baseKey: string) => {
+    const id = termKey || activeTermId
+    return id ? withTermKey(baseKey, id) : baseKey
+  }
+
+  useEffect(() => {
+    if (!hasMounted) return
+    setClassLevels(getClassLevelsFromDirectory(['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12']))
+  }, [hasMounted])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    if (hasLoadedFinanceStore) return
+    if (!termKey && !activeTermId) return
+    try {
+      const feeRaw = window.localStorage.getItem(storageKey(FEE_ITEMS_STORAGE_KEY)) ?? ''
+      const txRaw = window.localStorage.getItem(storageKey(FEE_TRANSACTIONS_STORAGE_KEY)) ?? ''
+      const feeParsed = feeRaw ? (JSON.parse(feeRaw) as unknown) : null
+      const txParsed = txRaw ? (JSON.parse(txRaw) as unknown) : null
+      if (Array.isArray(feeParsed)) setFeeItems(feeParsed as FeeItem[])
+      if (Array.isArray(txParsed)) setTransactions(txParsed as FeeTransaction[])
+    } catch {
+    } finally {
+      setHasLoadedFinanceStore(true)
+    }
+  }, [hasLoadedFinanceStore, hasMounted, termKey, activeTermId])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    if (!hasLoadedFinanceStore) return
+    if (isHistoryMode) return
+    if (!termKey && !activeTermId) return
+    try {
+      window.localStorage.setItem(storageKey(FEE_ITEMS_STORAGE_KEY), JSON.stringify(feeItems))
+      window.localStorage.setItem(storageKey(FEE_TRANSACTIONS_STORAGE_KEY), JSON.stringify(transactions))
+    } catch {
+    }
+  }, [feeItems, hasLoadedFinanceStore, hasMounted, isHistoryMode, termKey, activeTermId, transactions])
 
   const classOptions = useMemo(() => {
     const seen = new Set<string>()
     const options: string[] = ['All Classes']
+    for (const c of classLevels) {
+      const v = (c ?? '').toString().trim()
+      if (!v) continue
+      const k = v.toLowerCase()
+      if (seen.has(k)) continue
+      seen.add(k)
+      options.push(v)
+    }
     for (const item of feeItems) {
       const value = (item.grade ?? '').toString().trim()
       if (!value) continue
@@ -67,13 +160,15 @@ export default function FeeManagementPage() {
       options.push(value)
     }
     return options
-  }, [feeItems])
+  }, [classLevels, feeItems])
 
   const visibleFeeItems = useMemo(() => {
     if (selectedClass === 'All Classes') return feeItems
     const q = selectedClass.toLowerCase()
     return feeItems.filter((item) => item.grade.toLowerCase().includes(q))
   }, [feeItems, selectedClass])
+
+  const totalCollected = useMemo(() => transactions.reduce((sum, t) => sum + (Number(t.amount ?? 0) || 0), 0), [transactions])
 
   const [showFeeModal, setShowFeeModal] = useState(false)
   const [editingFeeId, setEditingFeeId] = useState<number | string | null>(null)
@@ -83,6 +178,7 @@ export default function FeeManagementPage() {
   const [formStatus, setFormStatus] = useState<'Active' | 'Pending' | 'Overdue'>('Active')
 
   const openAddFee = () => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to edit fees.')
     setEditingFeeId(null)
     setFormName('')
     setFormClass(selectedClass === 'All Classes' ? '' : selectedClass)
@@ -92,6 +188,7 @@ export default function FeeManagementPage() {
   }
 
   const openEditFee = (fee: FeeItem) => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to edit fees.')
     setEditingFeeId(fee.id)
     setFormName(fee.name)
     setFormClass(fee.grade)
@@ -103,6 +200,7 @@ export default function FeeManagementPage() {
   const closeFeeModal = () => setShowFeeModal(false)
 
   const saveFee = () => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to edit fees.')
     const name = formName.trim()
     const grade = (formClass || (selectedClass === 'All Classes' ? 'All Classes' : selectedClass)).trim()
     const amount = Number(formAmount)
@@ -142,6 +240,7 @@ export default function FeeManagementPage() {
   }
 
   const deleteFee = (id: number | string) => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to edit fees.')
     if (!window.confirm('Delete this fee item?')) return
     setFeeItems((prev) => prev.filter((item) => item.id !== id))
     toast.success('Fee item deleted.')
@@ -158,6 +257,14 @@ export default function FeeManagementPage() {
       </div>
 
       <div className="px-6 pb-8 space-y-5">
+        {isHistoryMode ? (
+          <div className="card animate-in stagger-1" style={{ background: 'rgba(201,160,32,0.04)', border: '1px solid rgba(201,160,32,0.25)' }}>
+            <div className="text-sm" style={{ color: '#6B6660' }}>
+              Viewing history term: <span className="font-semibold">{termLabel || termKey}</span>. Editing is disabled in history mode.
+            </div>
+          </div>
+        ) : null}
+
         {/* Stats Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in stagger-1">
           {/* Total Collected */}
@@ -166,8 +273,8 @@ export default function FeeManagementPage() {
               <span className="stat-label">Total Collected</span>
               <Building2 size={18} style={{ color: '#C9A020' }} />
             </div>
-            <div className="stat-value">{formatCurrency(data.total_collected)}</div>
-            <p className="text-xs" style={{ color: '#10B981' }}>↗ {data.total_change}</p>
+            <div className="stat-value">{formatCurrency(totalCollected || data.total_collected)}</div>
+            {!isHistoryMode ? <p className="text-xs" style={{ color: '#10B981' }}>↗ {data.total_change}</p> : null}
           </div>
 
           {/* Pending Clearance */}
@@ -203,10 +310,12 @@ export default function FeeManagementPage() {
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
-                <button className="btn-gold text-sm flex items-center gap-1.5" onClick={openAddFee}>
-                  <Plus size={14} />
-                  Add Item
-                </button>
+                {!isHistoryMode ? (
+                  <button className="btn-gold text-sm flex items-center gap-1.5" onClick={openAddFee}>
+                    <Plus size={14} />
+                    Add Item
+                  </button>
+                ) : null}
               </div>
             </div>
             {visibleFeeItems.length === 0 ? (
@@ -221,7 +330,7 @@ export default function FeeManagementPage() {
                     <th>Class</th>
                     <th>Amount</th>
                     <th>Status</th>
-                    <th style={{ width: 160 }}>Actions</th>
+                    {!isHistoryMode ? <th style={{ width: 160 }}>Actions</th> : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -235,22 +344,24 @@ export default function FeeManagementPage() {
                           {formatCurrency(fee.amount)}
                         </td>
                         <td><span className={`badge ${s.cls}`}>{s.label}</span></td>
-                        <td>
-                          <div className="flex items-center gap-2">
-                            <button className="btn-outline px-2 py-1.5 text-xs flex items-center gap-1" onClick={() => openEditFee(fee)}>
-                              <Pencil size={12} />
-                              Edit
-                            </button>
-                            <button
-                              className="btn-outline px-2 py-1.5 text-xs flex items-center gap-1"
-                              style={{ borderColor: '#FCA5A5', color: '#EF4444' }}
-                              onClick={() => deleteFee(fee.id)}
-                            >
-                              <Trash2 size={12} />
-                              Delete
-                            </button>
-                          </div>
-                        </td>
+                        {!isHistoryMode ? (
+                          <td>
+                            <div className="flex items-center gap-2">
+                              <button className="btn-outline px-2 py-1.5 text-xs flex items-center gap-1" onClick={() => openEditFee(fee)}>
+                                <Pencil size={12} />
+                                Edit
+                              </button>
+                              <button
+                                className="btn-outline px-2 py-1.5 text-xs flex items-center gap-1"
+                                style={{ borderColor: '#FCA5A5', color: '#EF4444' }}
+                                onClick={() => deleteFee(fee.id)}
+                              >
+                                <Trash2 size={12} />
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        ) : null}
                       </tr>
                     )
                   })}
@@ -266,7 +377,7 @@ export default function FeeManagementPage() {
               <a href="#" className="text-xs font-medium" style={{ color: '#C9A020' }}>View All</a>
             </div>
             <div className="space-y-4">
-              {data.recent_transactions.map((tx: typeof MOCK_FEE['recent_transactions'][0]) => (
+              {transactions.map((tx) => (
                 <div key={tx.id} className="flex gap-3">
                   <div className="w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0"
                        style={{ background: tx.color }} />

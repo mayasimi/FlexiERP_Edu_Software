@@ -41,6 +41,14 @@ export default function InstructorDashboardPage() {
   const displayName = (mounted ? user?.name : null) || 'Teacher'
   const initials    = displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
 
+  useEffect(() => {
+    setTermLabel(getActiveTermLabel(''))
+  }, [])
+
+  useEffect(() => {
+    if (isAssessmentActive) setAssessmentOpen(true)
+  }, [isAssessmentActive])
+
   return (
     <div className="flex min-h-screen" style={{ background: '#F7F6F3' }}>
 
@@ -118,9 +126,11 @@ export default function InstructorDashboardPage() {
                 border: isAssessmentActive ? '1px solid rgba(201,160,32,0.30)' : '1px solid transparent',
               }}
             >
-              <FileText size={16} />
-              <span className="flex-1">Assessment</span>
-              <span style={{ transform: assessmentOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease', opacity: 0.8 }}>
+              <span className="flex items-center gap-3">
+                <FileText size={16} />
+                <span>Assessment</span>
+              </span>
+              <span className="ml-auto" style={{ transform: assessmentOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease', opacity: 0.8 }}>
                 ▶
               </span>
             </button>

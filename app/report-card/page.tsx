@@ -1,10 +1,11 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import AppLayout from '@/components/layout/AppLayout'
 import Topbar from '@/components/layout/Topbar'
 import { Printer, BookOpen, Download } from 'lucide-react'
 import { useAuthStore } from '@/lib/auth-store'
 import { ReportCard as PortalReportCard } from '@/components/portal/PortalViews'
+import { getClassLevelsFromDirectory, getSectionsFromDirectory } from '@/lib/utils'
 
 const GRADING_SCALE = [
   { grade: 'A+', range: '90 – 100' },
@@ -33,6 +34,28 @@ const GRAND_GRADE  = 'A+'
 export default function ReportCardPage() {
   const [filter, setFilter] = useState({ examType: 'Mid Terms', class: 'Grade 10', section: 'Section A', student: 'Student Name 1' })
   const { role } = useAuthStore()
+  const [hasMounted, setHasMounted] = useState(false)
+  const [classLevels, setClassLevels] = useState<string[]>(['Grade 10', 'Grade 11', 'Grade 12'])
+
+  useEffect(() => setHasMounted(true), [])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    const next = getClassLevelsFromDirectory(['Grade 10', 'Grade 11', 'Grade 12'])
+    setClassLevels(next)
+    setFilter((f) => ({ ...f, class: next.includes(f.class) ? f.class : next[0] || f.class }))
+  }, [hasMounted])
+
+  const sectionOptions = useMemo(() => {
+    if (!hasMounted) return ['Section A', 'Section B']
+    const fromDir = getSectionsFromDirectory(filter.class)
+    return fromDir.length ? fromDir : ['Section A', 'Section B']
+  }, [filter.class, hasMounted])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    setFilter((f) => ({ ...f, section: sectionOptions.includes(f.section) ? f.section : sectionOptions[0] || f.section }))
+  }, [hasMounted, sectionOptions])
 
   const handlePrint = () => window.print()
 
@@ -78,13 +101,17 @@ export default function ReportCardPage() {
             <div className="flex flex-col gap-1 min-w-[130px]">
               <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Class</label>
               <select className="select" value={filter.class} onChange={e => setFilter(f => ({...f, class: e.target.value}))}>
-                <option>Grade 10</option><option>Grade 11</option><option>Grade 12</option>
+                {classLevels.map((c) => (
+                  <option key={c}>{c}</option>
+                ))}
               </select>
             </div>
             <div className="flex flex-col gap-1 min-w-[140px]">
               <label className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Section</label>
               <select className="select" value={filter.section} onChange={e => setFilter(f => ({...f, section: e.target.value}))}>
-                <option>Section A</option><option>Section B</option>
+                {sectionOptions.map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
               </select>
             </div>
             <div className="flex flex-col gap-1 min-w-[160px]">
@@ -116,7 +143,7 @@ export default function ReportCardPage() {
               </div>
               <div className="text-right text-sm" style={{ color: 'var(--text-muted)' }}>
                 <div>Term: <span className="font-semibold" style={{ color: 'var(--dark)' }}>[2025 – Spring Term]</span></div>
-                <div className="mt-1">Class: <span className="font-semibold" style={{ color: 'var(--dark)' }}>[Grade 10 – Section A]</span></div>
+                <div className="mt-1">Class: <span className="font-semibold" style={{ color: 'var(--dark)' }}>[{filter.class} – {filter.section}]</span></div>
               </div>
             </div>
 

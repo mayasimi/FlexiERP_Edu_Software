@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import AppLayout from '@/components/layout/AppLayout'
 import Topbar from '@/components/layout/Topbar'
 import { reportApi } from '@/lib/api'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { BarChart2, Download, X } from 'lucide-react'
+import { getClassLevelsFromDirectory } from '@/lib/utils'
 
 type PieSegment = { label: string; value: number; color: string }
 
@@ -86,18 +87,26 @@ export default function ReportsPage() {
   const ratioLeft = ratioMatch ? Number(ratioMatch[1]) : 1
   const ratioRight = ratioMatch ? Number(ratioMatch[2]) : 24
 
+  const [hasMounted, setHasMounted] = useState(false)
+  const [classLevels, setClassLevels] = useState<string[]>(['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'])
+  useEffect(() => setHasMounted(true), [])
+  useEffect(() => {
+    if (!hasMounted) return
+    setClassLevels(getClassLevelsFromDirectory(['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12']))
+  }, [hasMounted])
+
   const [showTopPerformers, setShowTopPerformers] = useState(false)
   const performers = (data.top_performers ?? []) as Array<typeof MOCK_ANALYTICS['top_performers'][0]>
   const classOptions = useMemo(() => {
     const base = Array.from(new Set(performers.map((p) => normalizeClassFromGrade(p.grade))))
-    const fallback = ['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12']
+    const fallback = classLevels.length ? classLevels : ['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12']
     const list = base.length ? base : fallback
     return list.sort((a, b) => {
       const an = Number(a.match(/(\d+)/)?.[1] ?? 0)
       const bn = Number(b.match(/(\d+)/)?.[1] ?? 0)
       return an - bn
     })
-  }, [performers])
+  }, [classLevels, performers])
   const [selectedClass, setSelectedClass] = useState<string>('')
   const filteredPerformers = useMemo(() => {
     const list = selectedClass
