@@ -1,5 +1,5 @@
 export type Section = 'dashboard' | 'attendance' | 'schedule' | 'assessment' | 'groups' | 'performance' | 'lesson-plans' | 'messages'  | 'assignments'
-export type AttendanceStatus = 'P' | 'A' | 'L' | 'H'
+export type AttendanceStatus = 'P' | 'A' | 'L' | 'S'
 export type AttendanceMode = 'daily' | 'period'
 
 export type ScheduleSlot = {

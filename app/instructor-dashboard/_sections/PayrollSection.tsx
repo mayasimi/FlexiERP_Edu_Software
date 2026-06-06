@@ -1,9 +1,12 @@
 'use client'
-
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Banknote, CalendarDays, CreditCard, Download, Eye, FileText, ReceiptText } from 'lucide-react'
 import { payrollApi } from '@/lib/api'
+import { useAuthStoreMounted } from '@/lib/auth-store'
+
+const PAYROLL_PAYSLIPS_STORAGE_KEY = 'edumanage.payroll.payslips'
+const PAYROLL_PAYMENTS_STORAGE_KEY = 'edumanage.payroll.payments'
 
 type PayslipStatus = 'Generated' | 'Paid' | 'Sent'
 
@@ -36,6 +39,40 @@ interface PaymentRecord {
   status: 'Completed' | 'Pending'
   reference: string
 }
+
+const FALLBACK_PAYSLIPS: PayslipRecord[] = [
+  {
+    id: 'PSL-001',
+    employeeId: 'STF-001',
+    employeeName: 'Dr. Sarah Jenkins',
+    payPeriod: 'May 2026',
+    paymentDate: '2026-05-20',
+    basicSalary: 6200,
+    allowances: 0,
+    bonus: 0,
+    overtime: 0,
+    deductions: 0,
+    tax: 0,
+    pension: 0,
+    netSalary: 6200,
+    generatedDate: '2026-05-15',
+    status: 'Paid',
+  },
+]
+
+const FALLBACK_PAYMENTS: PaymentRecord[] = [
+  {
+    id: 'PAY-001',
+    employeeId: 'STF-001',
+    employeeName: 'Dr. Sarah Jenkins',
+    payPeriod: 'May 2026',
+    paymentDate: '2026-05-20',
+    method: 'Paystack',
+    amount: 6200,
+    status: 'Completed',
+    reference: 'REF-SAR-001',
+  },
+]
 
 function currency(amount: number) {
   return new Intl.NumberFormat('en-NG', {

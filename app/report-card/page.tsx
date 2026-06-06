@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { BookOpen, Printer, ChevronDown } from 'lucide-react'
 import { portalApi } from '@/lib/api'
@@ -339,6 +339,84 @@ export function ReportCard({ studentId }: { studentId?: string }) {
   )
 }
 
+
+// ── Admin Report Card View ─────────────────────────────────────────────────
+// Lets admin pick class → section → student → term, then renders the same
+// ReportCard component used by the student portal.
+function AdminReportCardView() {
+  const { data: classes = [] } = useQuery({
+    queryKey: ['admin-rc-classes'],
+    queryFn:  () => import('@/lib/api').then(m => m.academicsApi.getClasses()).then(r => r.data),
+  })
+
+  const { data: students = [] } = useQuery({
+    queryKey: ['admin-rc-students'],
+    queryFn:  () => import('@/lib/api').then(m => m.studentApi.list({ per_page: 500 })).then(r => r.data.data),
+  })
+
+  const [selectedSectionId, setSelectedSectionId] = React.useState('')
+  const [selectedStudentId, setSelectedStudentId] = React.useState('')
+  const [loaded, setLoaded] = React.useState(false)
+
+  const allSections = classes.flatMap((c: any) =>
+    (c.sections ?? []).map((s: any) => ({ ...s, class_name: c.name }))
+  )
+
+  const studentsInSection = students.filter((s: any) =>
+    !selectedSectionId || String(s.section_id) === String(selectedSectionId)
+  )
+
+  const handleLoad = () => {
+    if (!selectedStudentId) return
+    setLoaded(true)
+  }
+
+  return (
+    <>
+      {/* Filter bar */}
+      <div style={{ background: '#FFFFFF', border: '1px solid #E8E4DC', borderRadius: 14, padding: 20, marginBottom: 24, display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-end' }}>
+        <div>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: '#6B6660', marginBottom: 6 }}>Class / Section</label>
+          <select value={selectedSectionId} onChange={e => { setSelectedSectionId(e.target.value); setSelectedStudentId(''); setLoaded(false) }}
+            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #E8E4DC', fontSize: 13, minWidth: 180 }}>
+            <option value="">All Sections</option>
+            {allSections.map((s: any) => (
+              <option key={s.id} value={s.id}>{s.class_name} — {s.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1, color: '#6B6660', marginBottom: 6 }}>Student</label>
+          <select value={selectedStudentId} onChange={e => { setSelectedStudentId(e.target.value); setLoaded(false) }}
+            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid #E8E4DC', fontSize: 13, minWidth: 220 }}>
+            <option value="">Select Student</option>
+            {studentsInSection.map((s: any) => (
+              <option key={s.db_id ?? s.id} value={String(s.db_id ?? s.id)}>
+                {s.name} ({s.id})
+              </option>
+            ))}
+          </select>
+        </div>
+        <button onClick={handleLoad} disabled={!selectedStudentId}
+          style={{ padding: '9px 20px', borderRadius: 9, background: selectedStudentId ? '#C9A020' : '#E8E4DC', color: selectedStudentId ? '#FFFFFF' : '#9B9590', fontWeight: 700, fontSize: 13, border: 'none', cursor: selectedStudentId ? 'pointer' : 'not-allowed' }}>
+          Load Report Card
+        </button>
+      </div>
+
+      {/* Report card — uses same component as portal */}
+      {loaded && selectedStudentId ? (
+        <ReportCard studentId={selectedStudentId} />
+      ) : (
+        <div style={{ background: '#FFFFFF', border: '1px solid #E8E4DC', borderRadius: 14, padding: 48, textAlign: 'center', color: '#9B9590' }}>
+          <BookOpen size={40} style={{ margin: '0 auto 12px', opacity: 0.2 }} />
+          <p style={{ margin: 0, fontWeight: 600, color: '#0D0D0D' }}>Select a student above to load their report card</p>
+          <p style={{ margin: '8px 0 0', fontSize: 13 }}>Class sections and students are loaded from the database.</p>
+        </div>
+      )}
+    </>
+  )
+}
+
 // ── Standalone page ────────────────────────────────────────────────────────
 export default function ReportCardPage() {
   const { role } = useAuthStore()
@@ -357,11 +435,7 @@ export default function ReportCardPage() {
     <AppLayout>
       <Topbar title="Report Card" />
       <div style={{ padding: '24px 24px 40px' }}>
-        <div style={{ background: '#FFFFFF', border: '1px solid #E8E4DC', borderRadius: 14, padding: 32, textAlign: 'center', color: '#9B9590' }}>
-          <BookOpen size={40} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
-          <p style={{ margin: 0, fontWeight: 600, color: '#0D0D0D' }}>Admin report card builder</p>
-          <p style={{ margin: '8px 0 0', fontSize: 13 }}>Students and parents can view their report cards from the portal.</p>
-        </div>
+        <AdminReportCardView />
       </div>
     </AppLayout>
   )

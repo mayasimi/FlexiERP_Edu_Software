@@ -1,262 +1,1239 @@
 'use client'
-import { useState } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import AppLayout from '@/components/layout/AppLayout'
 import Topbar from '@/components/layout/Topbar'
-import { examApi } from '@/lib/api'
 import toast from 'react-hot-toast'
-import { Printer, RefreshCw, Pencil } from 'lucide-react'
+import { Download, Pencil, Trash2, Upload } from 'lucide-react'
+import { adminMockDb } from '@/lib/admin-mock-db'
+import { getActiveTermId, getAcademicTerms, getClassLevelsFromDirectory, type AcademicTerm, withActiveTermKey, withTermKey } from '@/lib/utils'
 
-const GRADING_SCALE = [
-  { grade: 'A+', range: '90 – 100', color: '#C9A020' },
-  { grade: 'A',  range: '80 – 89', color: '#10B981' },
-  { grade: 'B',  range: '70 – 79', color: '#3B82F6' },
-  { grade: 'C',  range: '60 – 69', color: '#8B5CF6' },
-  { grade: 'D',  range: '50 – 59', color: '#F59E0B' },
-  { grade: 'F',  range: '0 – 49', color: '#EF4444' },
+type AssessmentRecord = { id: string; assessment: string; max_score: number }
+type GradeRecord = { id: string; lower: number; upper: number; grade: string; remark: string }
+type StudentMarks = { ca?: Record<string, number | null>; exam?: number | null; remark?: string }
+type BehaviourSkillRecord = { id: string; type: 'Behaviour' | 'Skill'; name: string; max_score: number }
+
+const DEFAULT_CLASSES = ['Grade 9', 'Grade 10', 'Grade 11', 'Grade 12']
+const ASSESSMENT_STORAGE_KEY = 'edu_results_assessment_setup_v1'
+const GRADE_STORAGE_KEY = 'edu_results_grade_setup_v1'
+const BEHAVIOUR_SKILL_STORAGE_KEY = 'edu_results_behaviour_skill_setup_v1'
+const MARKS_STORAGE_KEY = 'edu_instructor_assessment_marks_v1'
+
+const escapeCsv = (value: unknown) => {
+  const raw = (value ?? '').toString()
+  if (/[",\n\r]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`
+  return raw
+}
+
+const parseCsvLine = (line: string) => {
+  const out: string[] = []
+  let cur = ''
+  let inQuotes = false
+
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i]
+    if (ch === '"') {
+      const next = line[i + 1]
+      if (inQuotes && next === '"') {
+        cur += '"'
+        i += 1
+        continue
+      }
+      inQuotes = !inQuotes
+      continue
+    }
+    if (ch === ',' && !inQuotes) {
+      out.push(cur)
+      cur = ''
+      continue
+    }
+    cur += ch
+  }
+  out.push(cur)
+  return out.map((v) => v.trim())
+}
+
+const parseCsv = (text: string) => {
+  const normalized = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const lines = normalized.split('\n').filter((l) => l.trim().length > 0)
+  if (lines.length === 0) return { headers: [] as string[], rows: [] as string[][] }
+  const headers = parseCsvLine(lines[0]).map((h) => h.trim())
+  const rows = lines.slice(1).map((l) => parseCsvLine(l))
+  return { headers, rows }
+}
+
+const downloadText = (filename: string, text: string, mime = 'text/plain;charset=utf-8') => {
+  const blob = new Blob([text], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+const toAssessmentCsv = (rows: AssessmentRecord[]) => {
+  const headers = ['Assessment', 'Max Obtainable Score']
+  const lines = [
+    '\uFEFF' + headers.map(escapeCsv).join(','),
+    ...rows.map((r) => [r.assessment, r.max_score].map(escapeCsv).join(',')),
+  ]
+  return lines.join('\n')
+}
+
+const toGradeCsv = (rows: GradeRecord[]) => {
+  const headers = ['Lower', 'Upper', 'Grade', 'Remark']
+  const lines = [
+    '\uFEFF' + headers.map(escapeCsv).join(','),
+    ...rows.map((r) => [r.lower, r.upper, r.grade, r.remark].map(escapeCsv).join(',')),
+  ]
+  return lines.join('\n')
+}
+
+const defaultAssessment: AssessmentRecord[] = [
+  { id: 'as-1', assessment: 'Project', max_score: 10 },
+  { id: 'as-2', assessment: 'Test', max_score: 20 },
+  { id: 'as-3', assessment: 'Exam', max_score: 70 },
 ]
 
-const MOCK_STUDENTS = [
-  { id: '101', name: '[Student Name 1]', math: 85, science: 92, english: 78 },
-  { id: '102', name: '[Student Name 2]', math: 45, science: 50, english: 38 },
-  { id: '103', name: '[Student Name 3]', math: null, science: null, english: null },
+const defaultGrades: GradeRecord[] = [
+  { id: 'gr-1', lower: 75, upper: 100, grade: 'A1', remark: 'EXCELLENT' },
+  { id: 'gr-2', lower: 70, upper: 74, grade: 'B2', remark: 'VERY GOOD' },
+  { id: 'gr-3', lower: 65, upper: 69, grade: 'B3', remark: 'GOOD' },
+  { id: 'gr-4', lower: 60, upper: 64, grade: 'C4', remark: 'CREDIT' },
+  { id: 'gr-5', lower: 55, upper: 59, grade: 'C5', remark: 'CREDIT' },
+  { id: 'gr-6', lower: 50, upper: 54, grade: 'C6', remark: 'CREDIT' },
+  { id: 'gr-7', lower: 45, upper: 49, grade: 'D7', remark: 'PASS' },
+  { id: 'gr-8', lower: 40, upper: 44, grade: 'E8', remark: 'PASS' },
+  { id: 'gr-9', lower: 0, upper: 39, grade: 'F9', remark: 'FAIL' },
 ]
 
-function calcGrade(score: number | null): { grade: string; color: string } {
-  if (score === null) return { grade: '-', color: '#6B6660' }
-  if (score >= 90) return { grade: 'A+', color: '#C9A020' }
-  if (score >= 80) return { grade: 'A', color: '#10B981' }
-  if (score >= 70) return { grade: 'B', color: '#3B82F6' }
-  if (score >= 60) return { grade: 'C', color: '#8B5CF6' }
-  if (score >= 50) return { grade: 'D', color: '#F59E0B' }
-  return { grade: 'F', color: '#EF4444' }
+const parseGroupKey = (key: string) => {
+  const [classId, sectionId] = key.split(':')
+  const gradeNum = classId?.match(/\d+/)?.[0] ?? ''
+  const sectionLetter = sectionId?.match(/[a-z]$/i)?.[0]?.toUpperCase() ?? ''
+  const grade = gradeNum ? `Grade ${gradeNum}` : classId
+  const section = sectionLetter ? `Section ${sectionLetter}` : sectionId
+  const groupName = gradeNum && sectionLetter ? `Class ${gradeNum}${sectionLetter}` : `${grade} ${section}`
+  return { grade, section, groupName }
+}
+
+const computeGrade = (pct: number, gradeRows: GradeRecord[]) => {
+  const roundedPct = Math.round(pct * 10) / 10
+  const rule = gradeRows.find((g) => roundedPct >= g.lower && roundedPct <= g.upper) ?? null
+  return { pct: roundedPct, grade: rule?.grade ?? '—', remark: rule?.remark ?? '—' }
 }
 
 export default function ResultsPage() {
-  const [examType, setExamType] = useState('Mid Terms')
-  const [cls, setCls] = useState('Grade 10')
-  const [section, setSection] = useState('Section A')
-  const [term, setTerm] = useState('2025 - Spring Term')
-  const [marks, setMarks] = useState<Record<string, Record<string, string>>>({})
-  const [quickScore, setQuickScore] = useState('')
-  const [published, setPublished] = useState(false)
+  const router = useRouter()
+  const assessmentImportRef = useRef<HTMLInputElement>(null)
+  const gradeImportRef = useRef<HTMLInputElement>(null)
 
-  const setMark = (sid: string, subj: string, val: string) =>
-    setMarks(prev => ({ ...prev, [sid]: { ...(prev[sid] || {}), [subj]: val } }))
+  const [hasMounted, setHasMounted] = useState(false)
+  const [termIdOverride, setTermIdOverride] = useState<string>('')
+  const [activeTermId, setActiveTermId] = useState<string>('')
+  const [terms, setTerms] = useState<AcademicTerm[]>([])
+  const [classes, setClasses] = useState<string[]>(DEFAULT_CLASSES)
+  const [selectedClass, setSelectedClass] = useState<string>('Grade 12')
 
-  const getMark = (sid: string, subj: string, fallback: number | null): string => {
-    const v = marks[sid]?.[subj]
-    if (v !== undefined) return v
-    return fallback !== null ? String(fallback) : ''
+  const [assessmentByClass, setAssessmentByClass] = useState<Record<string, AssessmentRecord[]>>(() =>
+    Object.fromEntries(DEFAULT_CLASSES.map((c) => [c, defaultAssessment]))
+  )
+  const [gradeByClass, setGradeByClass] = useState<Record<string, GradeRecord[]>>(() =>
+    Object.fromEntries(DEFAULT_CLASSES.map((c) => [c, defaultGrades]))
+  )
+  const [behaviourSkillByClass, setBehaviourSkillByClass] = useState<Record<string, BehaviourSkillRecord[]>>(() =>
+    Object.fromEntries(DEFAULT_CLASSES.map((c) => [c, [] as BehaviourSkillRecord[]]))
+  )
+
+  useEffect(() => setHasMounted(true), [])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    setActiveTermId(getActiveTermId(''))
+    setTerms(getAcademicTerms([]))
+  }, [hasMounted])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    const next = getClassLevelsFromDirectory(DEFAULT_CLASSES)
+    setClasses(next)
+    setSelectedClass((prev) => (next.includes(prev) ? prev : next[0] || prev))
+  }, [hasMounted])
+
+  const [activeTab, setActiveTab] = useState<'settings' | 'view'>('settings')
+
+  useEffect(() => {
+    if (!hasMounted) return
+    if (typeof window === 'undefined') return
+    const read = () => {
+      const params = new URLSearchParams(window.location.search)
+      const tab = params.get('tab')
+      const term = (params.get('term') ?? '').trim()
+      setTermIdOverride(term)
+      setActiveTab(tab === 'view' || term ? 'view' : 'settings')
+    }
+    read()
+    window.addEventListener('locationchange', read)
+    return () => window.removeEventListener('locationchange', read)
+  }, [hasMounted])
+
+  const termKey = useMemo(() => {
+    const v = termIdOverride.trim()
+    return v
+  }, [termIdOverride])
+
+  const isHistoryMode = useMemo(() => {
+    if (!termKey) return false
+    if (!activeTermId) return true
+    return termKey !== activeTermId
+  }, [activeTermId, termKey])
+
+  const storageKey = (baseKey: string) => (termKey ? withTermKey(baseKey, termKey) : withActiveTermKey(baseKey))
+
+  const activeTermLabel = useMemo(() => {
+    if (!termKey) return ''
+    const found = terms.find((t) => t.id === termKey) ?? null
+    return found?.name ?? ''
+  }, [termKey, terms])
+
+  const goTab = (tab: 'settings' | 'view') => {
+    setActiveTab(tab)
+    router.replace(`/results?tab=${tab}${termKey ? `&term=${encodeURIComponent(termKey)}` : ''}`)
   }
 
-  const saveMutation = useMutation({
-    mutationFn: () => examApi.saveMarks({ exam_type: examType, class_id: cls, section_id: section, marks }),
-    onSuccess: () => toast.success('All marks saved!'),
-    onError: () => toast.error('Failed to save marks.'),
-  })
+  useEffect(() => {
+    if (!hasMounted) return
+    try {
+      const rawA = localStorage.getItem(storageKey(ASSESSMENT_STORAGE_KEY)) ?? localStorage.getItem(ASSESSMENT_STORAGE_KEY)
+      const rawG = localStorage.getItem(storageKey(GRADE_STORAGE_KEY)) ?? localStorage.getItem(GRADE_STORAGE_KEY)
+      const rawB = localStorage.getItem(storageKey(BEHAVIOUR_SKILL_STORAGE_KEY)) ?? localStorage.getItem(BEHAVIOUR_SKILL_STORAGE_KEY)
+      if (rawA) {
+        const parsed = JSON.parse(rawA) as Record<string, AssessmentRecord[]>
+        setAssessmentByClass((prev) => ({ ...prev, ...parsed }))
+      }
+      if (rawG) {
+        const parsed = JSON.parse(rawG) as Record<string, GradeRecord[]>
+        setGradeByClass((prev) => ({ ...prev, ...parsed }))
+      }
+      if (rawB) {
+        const parsed = JSON.parse(rawB) as Record<string, BehaviourSkillRecord[]>
+        setBehaviourSkillByClass((prev) => ({ ...prev, ...parsed }))
+      }
+    } catch {
+      toast.error('Could not load saved results setup.')
+    }
+  }, [hasMounted, termKey])
 
-  const quickGrade = quickScore ? calcGrade(Number(quickScore)) : null
+  useEffect(() => {
+    if (!hasMounted) return
+    setAssessmentByClass((prev) => {
+      const next = { ...prev }
+      for (const c of classes) {
+        if (!Array.isArray(next[c]) || next[c].length === 0) next[c] = defaultAssessment
+      }
+      return next
+    })
+    setGradeByClass((prev) => {
+      const next = { ...prev }
+      for (const c of classes) {
+        if (!Array.isArray(next[c]) || next[c].length === 0) next[c] = defaultGrades
+      }
+      return next
+    })
+    setBehaviourSkillByClass((prev) => {
+      const next = { ...prev }
+      for (const c of classes) {
+        if (!Array.isArray(next[c])) next[c] = []
+      }
+      return next
+    })
+  }, [classes, hasMounted])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    if (isHistoryMode) return
+    localStorage.setItem(storageKey(ASSESSMENT_STORAGE_KEY), JSON.stringify(assessmentByClass))
+  }, [assessmentByClass, hasMounted, isHistoryMode, termKey])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    if (isHistoryMode) return
+    localStorage.setItem(storageKey(GRADE_STORAGE_KEY), JSON.stringify(gradeByClass))
+  }, [gradeByClass, hasMounted, isHistoryMode, termKey])
+
+  useEffect(() => {
+    if (!hasMounted) return
+    if (isHistoryMode) return
+    localStorage.setItem(storageKey(BEHAVIOUR_SKILL_STORAGE_KEY), JSON.stringify(behaviourSkillByClass))
+  }, [behaviourSkillByClass, hasMounted, isHistoryMode, termKey])
+
+  const assessments = assessmentByClass[selectedClass] ?? []
+  const grades = gradeByClass[selectedClass] ?? []
+
+  const totalAssessmentScore = useMemo(() => assessments.reduce((sum, r) => sum + (Number.isFinite(r.max_score) ? r.max_score : 0), 0), [assessments])
+  const assessmentCsv = useMemo(() => toAssessmentCsv(assessments), [assessments])
+  const gradeCsv = useMemo(() => toGradeCsv(grades), [grades])
+
+  const [assessmentImportText, setAssessmentImportText] = useState('')
+  const [gradeImportText, setGradeImportText] = useState('')
+
+  const [assessmentName, setAssessmentName] = useState('')
+  const [assessmentMax, setAssessmentMax] = useState('')
+  const [editingAssessmentId, setEditingAssessmentId] = useState<string | null>(null)
+
+  const [gradeLower, setGradeLower] = useState('')
+  const [gradeUpper, setGradeUpper] = useState('')
+  const [gradeValue, setGradeValue] = useState('')
+  const [gradeRemark, setGradeRemark] = useState('')
+  const [editingGradeId, setEditingGradeId] = useState<string | null>(null)
+
+  const behaviourSkills = behaviourSkillByClass[selectedClass] ?? []
+  const behaviours = useMemo(() => behaviourSkills.filter((x) => x.type === 'Behaviour'), [behaviourSkills])
+  const skills = useMemo(() => behaviourSkills.filter((x) => x.type === 'Skill'), [behaviourSkills])
+
+  const [bsType, setBsType] = useState<'Behaviour' | 'Skill'>('Behaviour')
+  const [bsName, setBsName] = useState('')
+  const [bsMax, setBsMax] = useState('')
+  const [editingBsId, setEditingBsId] = useState<string | null>(null)
+
+  const resetBsForm = () => {
+    setBsType('Behaviour')
+    setBsName('')
+    setBsMax('')
+    setEditingBsId(null)
+  }
+
+  const startEditBs = (r: BehaviourSkillRecord) => {
+    setBsType(r.type)
+    setBsName(r.name)
+    setBsMax(String(r.max_score))
+    setEditingBsId(r.id)
+  }
+
+  const saveBs = () => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to edit setup.')
+    const name = bsName.trim()
+    const max = Number(bsMax)
+    if (!name) return toast.error('Please enter a name.')
+    if (!Number.isFinite(max) || max <= 0) return toast.error('Please enter a valid max score.')
+
+    setBehaviourSkillByClass((prev) => {
+      const list = prev[selectedClass] ?? []
+      if (editingBsId) {
+        return {
+          ...prev,
+          [selectedClass]: list.map((x) => (x.id === editingBsId ? { ...x, type: bsType, name, max_score: max } : x)),
+        }
+      }
+      const next: BehaviourSkillRecord = { id: `bs-${Date.now()}`, type: bsType, name, max_score: max }
+      return { ...prev, [selectedClass]: [next, ...list] }
+    })
+    toast.success(editingBsId ? 'Updated.' : 'Added.')
+    resetBsForm()
+  }
+
+  const removeBs = (id: string) => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to edit setup.')
+    setBehaviourSkillByClass((prev) => ({ ...prev, [selectedClass]: (prev[selectedClass] ?? []).filter((x) => x.id !== id) }))
+    toast.success('Deleted.')
+    if (editingBsId === id) resetBsForm()
+  }
+
+  const [marksStore, setMarksStore] = useState<Record<string, Record<string, StudentMarks>>>({})
+  const [viewSection, setViewSection] = useState<string>('')
+  const [viewSubject, setViewSubject] = useState<string>('')
+  const [viewTeacher, setViewTeacher] = useState<string>('')
+  const [viewSelectionKey, setViewSelectionKey] = useState<string>('')
+  const [viewStudentSearch, setViewStudentSearch] = useState<string>('')
+
+  useEffect(() => {
+    if (!hasMounted) return
+    try {
+      const raw = localStorage.getItem(storageKey(MARKS_STORAGE_KEY)) ?? localStorage.getItem(MARKS_STORAGE_KEY)
+      const parsed = raw ? (JSON.parse(raw) as Record<string, Record<string, StudentMarks>>) : {}
+      if (parsed && typeof parsed === 'object') setMarksStore(parsed)
+    } catch {
+      setMarksStore({})
+    }
+  }, [hasMounted, termKey])
+
+  const availableSelections = useMemo(() => {
+    const list: Array<{
+      key: string
+      teacherKey: string
+      groupKey: string
+      subject: string
+      grade: string
+      section: string
+      groupName: string
+      teacherLabel: string
+    }> = []
+
+    for (const key of Object.keys(marksStore)) {
+      const parts = key.split('|')
+      if (parts.length < 3) continue
+      const teacherKey = parts[0]
+      const groupKey = parts[1]
+      const subject = parts.slice(2).join('|')
+      const { grade, section, groupName } = parseGroupKey(groupKey)
+      const teacherLabel = teacherKey
+        .replace(/_/g, ' ')
+        .split(' ')
+        .filter(Boolean)
+        .map((w) => w.slice(0, 1).toUpperCase() + w.slice(1))
+        .join(' ')
+
+      list.push({ key, teacherKey, groupKey, subject, grade, section, groupName, teacherLabel })
+    }
+
+    return list.sort((a, b) => {
+      const g = a.grade.localeCompare(b.grade)
+      if (g !== 0) return g
+      const s = a.section.localeCompare(b.section)
+      if (s !== 0) return s
+      const sub = a.subject.localeCompare(b.subject)
+      if (sub !== 0) return sub
+      return a.teacherLabel.localeCompare(b.teacherLabel)
+    })
+  }, [marksStore])
+
+  const selectionsForClass = useMemo(() => availableSelections.filter((s) => s.grade === selectedClass), [availableSelections, selectedClass])
+
+  const subjectOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of selectionsForClass) set.add(s.subject)
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [selectionsForClass])
+
+  useEffect(() => {
+    if (activeTab !== 'view') return
+    setViewSubject((prev) => (prev && subjectOptions.includes(prev) ? prev : subjectOptions[0] || ''))
+  }, [activeTab, subjectOptions])
+
+  useEffect(() => {
+    if (activeTab !== 'view') return
+    setViewSection('')
+    setViewTeacher('')
+    setViewSelectionKey('')
+  }, [activeTab, viewSubject])
+
+  const sectionOptionsForSubject = useMemo(() => {
+    if (!viewSubject) return []
+    const set = new Set<string>()
+    for (const s of selectionsForClass) {
+      if (s.subject !== viewSubject) continue
+      set.add(s.section)
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  }, [selectionsForClass, viewSubject])
+
+  const requiresSection = useMemo(() => sectionOptionsForSubject.length > 1, [sectionOptionsForSubject.length])
+
+  useEffect(() => {
+    if (activeTab !== 'view') return
+    if (!viewSubject) return
+    if (requiresSection) return
+    const only = sectionOptionsForSubject[0] || ''
+    if (!only) return
+    setViewSection(only)
+  }, [activeTab, requiresSection, sectionOptionsForSubject, viewSubject])
+
+  const teacherOptionsForSubjectSection = useMemo(() => {
+    if (!viewSubject) return []
+    const map = new Map<string, string>()
+    for (const s of selectionsForClass) {
+      if (s.subject !== viewSubject) continue
+      if (requiresSection && !viewSection) continue
+      if (requiresSection && s.section !== viewSection) continue
+      if (!requiresSection && viewSection && s.section !== viewSection) continue
+      map.set(s.teacherKey, s.teacherLabel)
+    }
+    return Array.from(map.entries())
+      .map(([teacherKey, teacherLabel]) => ({ teacherKey, teacherLabel }))
+      .sort((a, b) => a.teacherLabel.localeCompare(b.teacherLabel))
+  }, [requiresSection, selectionsForClass, viewSection, viewSubject])
+
+  useEffect(() => {
+    if (activeTab !== 'view') return
+    if (teacherOptionsForSubjectSection.length <= 1) setViewTeacher('')
+  }, [activeTab, teacherOptionsForSubjectSection.length])
+
+  const selectionsFiltered = useMemo(() => {
+    if (!viewSubject) return []
+    return selectionsForClass.filter((s) => {
+      if (s.subject !== viewSubject) return false
+      if (requiresSection && !viewSection) return false
+      if (requiresSection && s.section !== viewSection) return false
+      if (!requiresSection && viewSection && s.section !== viewSection) return false
+      if (viewTeacher && s.teacherKey !== viewTeacher) return false
+      return true
+    })
+  }, [requiresSection, selectionsForClass, viewSection, viewSubject, viewTeacher])
+
+  useEffect(() => {
+    if (activeTab !== 'view') return
+    const first = selectionsFiltered[0]?.key ?? ''
+    setViewSelectionKey((prev) => (prev && selectionsFiltered.some((s) => s.key === prev) ? prev : first))
+  }, [activeTab, selectionsFiltered])
+
+  const selectedView = useMemo(() => selectionsFiltered.find((s) => s.key === viewSelectionKey) ?? null, [selectionsFiltered, viewSelectionKey])
+
+  const assessmentConfig = useMemo(() => {
+    const list = assessmentByClass[selectedClass]
+    return Array.isArray(list) && list.length ? list : defaultAssessment
+  }, [assessmentByClass, selectedClass])
+
+  const gradeConfig = useMemo(() => {
+    const list = gradeByClass[selectedClass]
+    return Array.isArray(list) && list.length ? list : defaultGrades
+  }, [gradeByClass, selectedClass])
+
+  const examRow = useMemo(() => assessmentConfig.find((r) => /exam/i.test(r.assessment)) ?? null, [assessmentConfig])
+  const caRows = useMemo(() => {
+    const list = assessmentConfig.filter((r) => !/exam/i.test(r.assessment))
+    return list.length ? list : [{ id: 'as-ca', assessment: 'CA', max_score: 40 }]
+  }, [assessmentConfig])
+  const caMax = useMemo(() => caRows.reduce((sum, r) => sum + (Number.isFinite(r.max_score) ? r.max_score : 0), 0), [caRows])
+  const examMax = useMemo(() => (examRow && Number.isFinite(examRow.max_score) ? examRow.max_score : 60), [examRow])
+  const totalMax = useMemo(() => caMax + examMax, [caMax, examMax])
+
+  const viewStudents = useMemo(() => {
+    if (!selectedView) return []
+    return adminMockDb.students.filter((s) => s.grade === selectedView.grade && s.section === selectedView.section)
+  }, [selectedView])
+
+  const viewRows = useMemo(() => {
+    if (!selectedView) return []
+    const data = marksStore[selectedView.key] ?? {}
+    return viewStudents.map((st) => {
+      const m = data[st.id] ?? {}
+      const ca = m.ca ?? {}
+      const caTotal = caRows.reduce((sum, r) => sum + (Number(ca[r.assessment] ?? 0) || 0), 0)
+      const exam = Number(m.exam ?? 0) || 0
+      const total = caTotal + exam
+      const pct = totalMax > 0 ? (total / totalMax) * 100 : 0
+      const g = computeGrade(pct, gradeConfig)
+      const typedRemark = (m.remark ?? '').trim()
+      const remark = typedRemark ? typedRemark : g.remark
+      return { student: st, ca, exam: m.exam ?? null, caTotal, total, pct: g.pct, grade: g.grade, remark }
+    })
+  }, [caRows, gradeConfig, marksStore, selectedView, totalMax, viewStudents])
+
+  const filteredViewRows = useMemo(() => {
+    const q = viewStudentSearch.trim().toLowerCase()
+    if (!q) return viewRows
+    return viewRows.filter((r) => {
+      const name = (r.student?.name ?? '').toLowerCase()
+      const adm = (r.student as any)?.admission_no?.toString?.().toLowerCase?.() ?? ''
+      return name.includes(q) || adm.includes(q)
+    })
+  }, [viewRows, viewStudentSearch])
+
+  const resetAssessmentForm = () => {
+    setAssessmentName('')
+    setAssessmentMax('')
+    setEditingAssessmentId(null)
+  }
+
+  const resetGradeForm = () => {
+    setGradeLower('')
+    setGradeUpper('')
+    setGradeValue('')
+    setGradeRemark('')
+    setEditingGradeId(null)
+  }
+
+  const startEditAssessment = (r: AssessmentRecord) => {
+    setEditingAssessmentId(r.id)
+    setAssessmentName(r.assessment)
+    setAssessmentMax(String(r.max_score))
+  }
+
+  const saveAssessment = () => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to edit setup.')
+    const name = assessmentName.trim()
+    const max = Number(assessmentMax)
+    if (!name || !Number.isFinite(max) || max < 0) {
+      toast.error('Please enter a valid Assessment and Max Score.')
+      return
+    }
+
+    setAssessmentByClass((prev) => {
+      const list = prev[selectedClass] ?? []
+      if (editingAssessmentId) {
+        return {
+          ...prev,
+          [selectedClass]: list.map((x) => (x.id === editingAssessmentId ? { ...x, assessment: name, max_score: max } : x)),
+        }
+      }
+      const next: AssessmentRecord = { id: `as-${Date.now()}`, assessment: name, max_score: max }
+      return { ...prev, [selectedClass]: [...list, next] }
+    })
+    toast.success(editingAssessmentId ? 'Assessment updated.' : 'Assessment added.')
+    resetAssessmentForm()
+  }
+
+  const removeAssessment = (id: string) => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to edit setup.')
+    setAssessmentByClass((prev) => ({ ...prev, [selectedClass]: (prev[selectedClass] ?? []).filter((x) => x.id !== id) }))
+    if (editingAssessmentId === id) resetAssessmentForm()
+    toast.success('Assessment removed.')
+  }
+
+  const startEditGrade = (r: GradeRecord) => {
+    setEditingGradeId(r.id)
+    setGradeLower(String(r.lower))
+    setGradeUpper(String(r.upper))
+    setGradeValue(r.grade)
+    setGradeRemark(r.remark)
+  }
+
+  const saveGrade = () => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to edit setup.')
+    const lower = Number(gradeLower)
+    const upper = Number(gradeUpper)
+    const gradeText = gradeValue.trim()
+    const remark = gradeRemark.trim()
+
+    if (!Number.isFinite(lower) || !Number.isFinite(upper) || lower < 0 || upper < 0 || lower > upper || !gradeText) {
+      toast.error('Please enter a valid grade range and grade.')
+      return
+    }
+
+    setGradeByClass((prev) => {
+      const list = prev[selectedClass] ?? []
+      if (editingGradeId) {
+        return {
+          ...prev,
+          [selectedClass]: list.map((x) => (x.id === editingGradeId ? { ...x, lower, upper, grade: gradeText, remark } : x)),
+        }
+      }
+      const next: GradeRecord = { id: `gr-${Date.now()}`, lower, upper, grade: gradeText, remark }
+      return { ...prev, [selectedClass]: [...list, next].sort((a, b) => b.upper - a.upper) }
+    })
+    toast.success(editingGradeId ? 'Grade updated.' : 'Grade added.')
+    resetGradeForm()
+  }
+
+  const removeGrade = (id: string) => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to edit setup.')
+    setGradeByClass((prev) => ({ ...prev, [selectedClass]: (prev[selectedClass] ?? []).filter((x) => x.id !== id) }))
+    if (editingGradeId === id) resetGradeForm()
+    toast.success('Grade removed.')
+  }
+
+  const importAssessmentCsvText = (text: string) => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to import setup.')
+    try {
+      const { headers, rows } = parseCsv(text)
+      if (headers.length === 0) {
+        toast.error('Import text is empty.')
+        return
+      }
+      const aIdx = headers.findIndex((h) => /assessment/i.test(h))
+      const mIdx = headers.findIndex((h) => /max/i.test(h))
+      if (aIdx === -1 || mIdx === -1) {
+        toast.error('Import must contain "Assessment" and "Max" columns.')
+        return
+      }
+      const parsed: AssessmentRecord[] = []
+      for (const r of rows) {
+        const assessment = (r[aIdx] ?? '').trim()
+        const max = Number((r[mIdx] ?? '').trim())
+        if (!assessment || !Number.isFinite(max)) continue
+        parsed.push({ id: `as-${Date.now()}-${parsed.length}`, assessment, max_score: max })
+      }
+      if (parsed.length === 0) {
+        toast.error('No valid assessment rows found.')
+        return
+      }
+      setAssessmentByClass((prev) => ({ ...prev, [selectedClass]: parsed }))
+      toast.success(`Imported ${parsed.length} assessment records.`)
+      setAssessmentImportText('')
+    } catch {
+      toast.error('Could not import this CSV text.')
+    }
+  }
+
+  const importAssessmentCsv = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const text = typeof reader.result === 'string' ? reader.result : ''
+        importAssessmentCsvText(text)
+      } catch {
+        toast.error('Could not import this CSV.')
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  const importGradeCsvText = (text: string) => {
+    if (isHistoryMode) return toast.error('History mode: switch to the active term to import setup.')
+    try {
+      const { headers, rows } = parseCsv(text)
+      if (headers.length === 0) {
+        toast.error('Import text is empty.')
+        return
+      }
+      const lIdx = headers.findIndex((h) => /lower/i.test(h))
+      const uIdx = headers.findIndex((h) => /upper/i.test(h))
+      const gIdx = headers.findIndex((h) => /^grade$/i.test(h) || /grade/i.test(h))
+      const rIdx = headers.findIndex((h) => /remark/i.test(h))
+      if (lIdx === -1 || uIdx === -1 || gIdx === -1) {
+        toast.error('Import must contain "Lower", "Upper", and "Grade" columns.')
+        return
+      }
+      const parsed: GradeRecord[] = []
+      for (const row of rows) {
+        const lower = Number((row[lIdx] ?? '').trim())
+        const upper = Number((row[uIdx] ?? '').trim())
+        const grade = (row[gIdx] ?? '').trim()
+        const remark = rIdx === -1 ? '' : (row[rIdx] ?? '').trim()
+        if (!Number.isFinite(lower) || !Number.isFinite(upper) || lower > upper || !grade) continue
+        parsed.push({ id: `gr-${Date.now()}-${parsed.length}`, lower, upper, grade, remark })
+      }
+      if (parsed.length === 0) {
+        toast.error('No valid grade rows found.')
+        return
+      }
+      setGradeByClass((prev) => ({ ...prev, [selectedClass]: parsed.sort((a, b) => b.upper - a.upper) }))
+      toast.success(`Imported ${parsed.length} grade records.`)
+      setGradeImportText('')
+    } catch {
+      toast.error('Could not import this CSV text.')
+    }
+  }
+
+  const importGradeCsv = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const text = typeof reader.result === 'string' ? reader.result : ''
+        importGradeCsvText(text)
+      } catch {
+        toast.error('Could not import this CSV.')
+      }
+    }
+    reader.readAsText(file)
+  }
 
   return (
     <AppLayout>
-      <Topbar action={{ label: 'New Exam', onClick: () => {} }} />
+      <Topbar />
 
       <div className="page-header animate-in">
         <div className="gold-accent" />
-        <h1 className="page-title">Examination & Result Processing</h1>
+        <h1 className="page-title">Results</h1>
+        <p className="page-subtitle">
+          {activeTab === 'view' ? 'Query class results entered by instructors.' : 'Configure continuous assessment and grading by class.'}
+        </p>
       </div>
 
       <div className="px-6 pb-8">
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
-          {/* Main Area */}
-          <div className="xl:col-span-3 space-y-4">
-            {/* Filter & Select */}
-            <div className="card animate-in stagger-1">
-              <h2 className="font-bold mb-4">Filter & Select</h2>
-              <div className="grid grid-cols-3 gap-3 mb-4">
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Exam Type</label>
-                  <select value={examType} onChange={e => setExamType(e.target.value)} className="select">
-                    <option>Mid Terms</option><option>Final Exams</option><option>Unit Test</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Class</label>
-                  <select value={cls} onChange={e => setCls(e.target.value)} className="select">
-                    <option>Grade 10</option><option>Grade 11</option><option>Grade 12</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Section</label>
-                  <select value={section} onChange={e => setSection(e.target.value)} className="select">
-                    <option>Section A</option><option>Section B</option>
-                  </select>
-                </div>
-              </div>
-              <button className="btn-outline flex items-center gap-2">
-                <RefreshCw size={14} /> Load Students
-              </button>
+        <div className="card animate-in stagger-1 mb-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[220px]">
+              <label className="label">Select Class</label>
+              <select value={selectedClass} onChange={(e) => setSelectedClass(e.target.value)} className="select">
+                {classes.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
 
-            {/* Marks Entry */}
-            <div className="card animate-in stagger-2">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="font-bold">Marks Entry</h2>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs" style={{ color: '#6B6660' }}>Progress</span>
-                  <div className="w-32 h-2 rounded-full overflow-hidden" style={{ background: '#E4E1D8' }}>
-                    <div className="h-full rounded-full" style={{ width: '45%', background: '#C9A020' }} />
-                  </div>
-                  <span className="text-xs font-semibold" style={{ color: '#C9A020' }}>45%</span>
-                </div>
-              </div>
-              <div className="flex gap-2 mb-4">
-                <button className="btn-outline text-xs px-3 py-1.5">Fill Default Marks</button>
-                <button className="btn-dark text-xs px-3 py-1.5">Apply Grading</button>
-              </div>
-
-              <div className="rounded-xl overflow-hidden border" style={{ borderColor: '#E4E1D8' }}>
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Roll</th>
-                      <th>Student Name</th>
-                      <th>Math</th>
-                      <th>Science</th>
-                      <th>English</th>
-                      <th>Total</th>
-                      <th>Grade</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {MOCK_STUDENTS.map(st => {
-                      const m = Number(getMark(st.id, 'math', st.math)) || 0
-                      const s = Number(getMark(st.id, 'science', st.science)) || 0
-                      const e = Number(getMark(st.id, 'english', st.english)) || 0
-                      const isPending = st.math === null
-                      const total = isPending ? 0 : m + s + e
-                      const avg = isPending ? null : Math.round(total / 3)
-                      const { grade, color } = calcGrade(avg)
-                      const pass = avg !== null && avg >= 50
-
-                      return (
-                        <tr key={st.id}>
-                          <td className="font-mono text-sm" style={{ color: '#6B6660' }}>{st.id}</td>
-                          <td className="font-medium">{st.name}</td>
-                          {(['math', 'science', 'english'] as const).map(subj => {
-                            const val = getMark(st.id, subj, st[subj])
-                            const numVal = Number(val)
-                            const isLow = !isPending && val && numVal < 50
-                            return (
-                              <td key={subj}>
-                                <input
-                                  type="number" min="0" max="100"
-                                  value={val}
-                                  onChange={e => setMark(st.id, subj, e.target.value)}
-                                  placeholder="--"
-                                  className="w-16 px-2 py-1.5 rounded-lg text-sm text-center border outline-none transition-all"
-                                  style={{
-                                    borderColor: isLow ? '#EF4444' : '#E4E1D8',
-                                    background: isLow ? '#FEF2F2' : 'white',
-                                    fontFamily: 'inherit',
-                                  }}
-                                />
-                              </td>
-                            )
-                          })}
-                          <td className="font-bold">{isPending ? 0 : total}</td>
-                          <td className="font-bold" style={{ color }}>{grade}</td>
-                          <td>
-                            {isPending ? (
-                              <span className="badge badge-gray">Pending</span>
-                            ) : pass ? (
-                              <span className="badge badge-green">Pass</span>
-                            ) : (
-                              <span className="badge badge-red">Fail</span>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="flex justify-end mt-4">
-                <button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}
-                        className="btn-gold flex items-center gap-2">
-                  💾 {saveMutation.isPending ? 'Saving…' : 'Save All Marks'}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Panel */}
-          <div className="space-y-4">
-            {/* Final Actions */}
-            <div className="card animate-in stagger-1">
-              <h3 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: '#6B6660' }}>Final Actions</h3>
-              <div className="flex items-center justify-between p-3 rounded-xl mb-3"
-                   style={{ background: '#F7F6F3', border: '1px solid #E4E1D8' }}>
-                <div>
-                  <p className="font-semibold text-sm">Publish Results</p>
-                  <p className="text-xs" style={{ color: '#6B6660' }}>Visible to students</p>
-                </div>
-                <button onClick={() => setPublished(!published)}
-                        className="relative w-12 h-6 rounded-full transition-all"
-                        style={{ background: published ? '#C9A020' : '#E4E1D8' }}>
-                  <span className="absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-all"
-                        style={{ left: published ? '28px' : '4px' }} />
-                </button>
-              </div>
-              <button className="w-full btn-outline flex items-center justify-center gap-2 text-sm"
-                      style={{ color: '#C9A020', borderColor: '#C9A020' }}>
-                <Printer size={14} /> Generate Report Card
-              </button>
+            <div className="min-w-[260px]">
+              <label className="label">Term</label>
+              <select
+                value={termKey}
+                onChange={(e) => {
+                  const next = e.target.value
+                  setTermIdOverride(next)
+                  const tab = activeTab === 'settings' && next ? 'view' : activeTab
+                  router.replace(`/results?tab=${tab}${next ? `&term=${encodeURIComponent(next)}` : ''}`)
+                }}
+                className="select"
+              >
+                <option value="">Active Term</option>
+                {terms.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.year ? `${t.year} • ${t.name}` : t.name}{t.status ? ` (${t.status})` : ''}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {/* Grading Scale */}
-            <div className="card animate-in stagger-2">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#6B6660' }}>Grading Scale</h3>
-                <button className="p-1 rounded hover:bg-gray-100"><Pencil size={12} style={{ color: '#6B6660' }} /></button>
-              </div>
-              <div className="space-y-2">
-                {GRADING_SCALE.map(({ grade, range, color }) => (
-                  <div key={grade} className="flex justify-between items-center py-1.5 border-b last:border-0 text-sm"
-                       style={{ borderColor: '#E4E1D8' }}>
-                    <span className="font-bold w-8" style={{ color }}>{grade}</span>
-                    <span style={{ color: '#6B6660' }}>{range}</span>
-                  </div>
+            <div className="ml-auto flex items-end gap-2">
+              <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: '#E4E1D8' }}>
+                {[
+                  { id: 'settings' as const, label: 'Result Settings' },
+                  { id: 'view' as const, label: 'View Results' },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => goTab(t.id)}
+                    className="px-3 py-2 text-sm font-semibold"
+                    style={{
+                      background: activeTab === t.id ? 'rgba(201,160,32,0.15)' : 'transparent',
+                      color: activeTab === t.id ? '#C9A020' : '#6B6660',
+                      borderRight: t.id === 'settings' ? '1px solid #E4E1D8' : undefined,
+                    }}
+                  >
+                    {t.label}
+                  </button>
                 ))}
               </div>
             </div>
-
-            {/* Quick Grade Calc */}
-            <div className="rounded-xl p-4 animate-in stagger-3" style={{ background: '#0D0D0D' }}>
-              <h3 className="text-xs font-semibold uppercase tracking-widest mb-3 text-white/60">Quick Grade Calc</h3>
-              <div className="flex gap-2 items-center mb-3">
-                <input type="number" placeholder="Score" value={quickScore}
-                       onChange={e => setQuickScore(e.target.value)}
-                       className="flex-1 px-3 py-2 rounded-lg text-sm text-center text-white outline-none"
-                       style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)', fontFamily: 'inherit' }} />
-                <span className="text-white/40 text-sm">/</span>
-                <div className="w-14 px-3 py-2 rounded-lg text-sm text-center text-white"
-                     style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' }}>100</div>
-              </div>
-              {quickGrade && (
-                <div className="text-sm text-white/60">
-                  Calculated: <span className="text-xl font-bold ml-2" style={{ color: quickGrade.color }}>
-                    {quickGrade.grade}
-                  </span>
-                  <span className="ml-1 text-white/40">({quickScore}%)</span>
-                </div>
-              )}
-            </div>
           </div>
+          {isHistoryMode ? (
+            <div className="mt-3 text-xs" style={{ color: '#6B6660' }}>
+              Viewing history term: <span className="font-semibold">{activeTermLabel || termKey}</span>. Settings are read-only in history mode.
+            </div>
+          ) : null}
         </div>
+
+        {activeTab === 'view' ? (
+          <div className="card animate-in stagger-2">
+            <div className="flex flex-wrap items-end gap-3 mb-4">
+              <div className="min-w-[260px]">
+                <label className="label">Subject</label>
+                <select value={viewSubject} onChange={(e) => setViewSubject(e.target.value)} className="select">
+                  {subjectOptions.length === 0 ? <option value="">No subjects</option> : null}
+                  {subjectOptions.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+
+              {requiresSection ? (
+                <div className="min-w-[220px]">
+                  <label className="label">Section</label>
+                  <select value={viewSection} onChange={(e) => setViewSection(e.target.value)} className="select">
+                    <option value="">Select section</option>
+                    {sectionOptionsForSubject.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : viewSection ? (
+                <div className="min-w-[220px]">
+                  <label className="label">Section</label>
+                  <input className="input" value={viewSection} readOnly />
+                </div>
+              ) : null}
+
+              {teacherOptionsForSubjectSection.length > 1 ? (
+                <div className="min-w-[260px]">
+                  <label className="label">Teacher</label>
+                  <select value={viewTeacher} onChange={(e) => setViewTeacher(e.target.value)} className="select">
+                    <option value="">All</option>
+                    {teacherOptionsForSubjectSection.map((t) => (
+                      <option key={t.teacherKey} value={t.teacherKey}>{t.teacherLabel}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+
+              <div className="min-w-[260px]">
+                <label className="label">Search Student</label>
+                <input
+                  className="input"
+                  value={viewStudentSearch}
+                  onChange={(e) => setViewStudentSearch(e.target.value)}
+                  placeholder="Name or admission no"
+                />
+              </div>
+
+              <div className="min-w-[360px] flex-1">
+                <label className="label">Result Set</label>
+                <select
+                  value={viewSelectionKey}
+                  onChange={(e) => setViewSelectionKey(e.target.value)}
+                  className="select"
+                  disabled={selectionsFiltered.length === 0}
+                >
+                  {selectionsFiltered.length === 0 ? <option value="">No results found</option> : null}
+                  {selectionsFiltered.map((s) => (
+                    <option key={s.key} value={s.key}>
+                      {s.groupName} • {s.subject} • {s.teacherLabel}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {requiresSection && !viewSection ? (
+              <div className="rounded-xl p-3" style={{ background: '#F7F6F3', border: '1px solid #E4E1D8' }}>
+                <div className="text-sm" style={{ color: '#6B6660' }}>
+                  Select a section to view results for {selectedClass} • {viewSubject}.
+                </div>
+              </div>
+            ) : selectedView ? (
+              <div className="rounded-xl overflow-hidden border" style={{ borderColor: '#E4E1D8' }}>
+                <div className="overflow-x-auto">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 56 }}>#</th>
+                        <th>Student</th>
+                        {caRows.map((r) => (
+                          <th key={r.id} style={{ width: 130 }}>{r.assessment} (/{r.max_score})</th>
+                        ))}
+                        <th style={{ width: 120 }}>CA Total (/{caMax})</th>
+                        <th style={{ width: 150 }}>{examRow?.assessment || 'Exam'} (/{examMax})</th>
+                        <th style={{ width: 120 }}>Total (/{totalMax})</th>
+                        <th style={{ width: 90 }}>%</th>
+                        <th style={{ width: 90 }}>Grade</th>
+                        <th style={{ width: 240 }}>Remark</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredViewRows.map((r, idx) => (
+                        <tr key={r.student.id}>
+                          <td className="font-mono text-sm" style={{ color: '#6B6660' }}>{idx + 1}</td>
+                          <td className="font-medium">{r.student.name}</td>
+                          {caRows.map((ca) => (
+                            <td key={ca.id} style={{ color: '#6B6660' }}>
+                              {r.ca?.[ca.assessment] ?? '—'}
+                            </td>
+                          ))}
+                          <td className="font-bold">{r.caTotal}</td>
+                          <td style={{ color: '#6B6660' }}>{r.exam ?? '—'}</td>
+                          <td className="font-bold">{r.total}</td>
+                          <td style={{ color: '#6B6660' }}>{Number.isFinite(r.pct) ? `${r.pct}%` : '—'}</td>
+                          <td className="font-bold">{r.grade}</td>
+                          <td style={{ color: '#6B6660' }}>{r.remark}</td>
+                        </tr>
+                      ))}
+                      {filteredViewRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={9 + caRows.length} style={{ padding: 20 }}>
+                            <div className="text-sm" style={{ color: '#6B6660' }}>No students found for this class/section.</div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl p-3" style={{ background: '#F7F6F3', border: '1px solid #E4E1D8' }}>
+                <div className="text-sm" style={{ color: '#6B6660' }}>
+                  No results found for {selectedClass}. Ask the instructor to input scores and save.
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <div className="card animate-in stagger-2">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-bold">Continuous Assessment Setup for {selectedClass}</h2>
+                  <span className="text-xs font-semibold" style={{ color: '#6B6660' }}>Total: {totalAssessmentScore}</span>
+                </div>
+
+            <div className="rounded-xl overflow-hidden border mb-4" style={{ borderColor: '#E4E1D8' }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Assessment</th>
+                    <th>Max Obtainable Score</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {assessments.map((r) => (
+                    <tr key={r.id}>
+                      <td className="font-medium">{r.assessment}</td>
+                      <td style={{ color: '#6B6660' }}>{r.max_score}</td>
+                      <td>
+                        <div className="flex gap-1">
+                          <button className="p-1.5 rounded hover:bg-gray-100" type="button" onClick={() => startEditAssessment(r)}>
+                            <Pencil size={14} style={{ color: '#6B6660' }} />
+                          </button>
+                          <button className="p-1.5 rounded hover:bg-red-50" type="button" onClick={() => removeAssessment(r.id)}>
+                            <Trash2 size={14} style={{ color: '#EF4444' }} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td className="font-bold">TOTAL</td>
+                    <td className="font-bold">{totalAssessmentScore}</td>
+                    <td />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mb-4">
+              <div className="label">Export Assessment Record To</div>
+              <textarea value={assessmentCsv} readOnly className="input min-h-[96px]" />
+              <div className="flex flex-wrap gap-2 mt-2">
+                <button type="button" className="btn-outline text-sm flex items-center gap-2" onClick={() => downloadText(`assessment_setup_${selectedClass}.csv`, assessmentCsv, 'text/csv;charset=utf-8')}>
+                  <Download size={14} /> Export Assessment Record
+                </button>
+                <input
+                  ref={assessmentImportRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) importAssessmentCsv(file)
+                    e.target.value = ''
+                  }}
+                />
+                <button type="button" className="btn-outline text-sm flex items-center gap-2" onClick={() => assessmentImportRef.current?.click()}>
+                  <Upload size={14} /> Import Assessment Record
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <div className="label">Import Assessment Record (Paste CSV)</div>
+              <textarea
+                value={assessmentImportText}
+                onChange={(e) => setAssessmentImportText(e.target.value)}
+                className="input min-h-[96px]"
+                placeholder="Paste CSV here, then click Import"
+              />
+              <div className="flex justify-end mt-2">
+                <button type="button" className="btn-gold text-sm flex items-center gap-2" onClick={() => importAssessmentCsvText(assessmentImportText)}>
+                  <Upload size={14} /> Import
+                </button>
+              </div>
+            </div>
+
+            <div className="label">New Assessment Record</div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="md:col-span-2">
+                <input value={assessmentName} onChange={(e) => setAssessmentName(e.target.value)} className="input" placeholder="Assessment" />
+              </div>
+              <div>
+                <input value={assessmentMax} onChange={(e) => setAssessmentMax(e.target.value)} className="input" placeholder="Max Obtainable Score" />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-3">
+              {editingAssessmentId ? (
+                <button type="button" className="btn-outline" onClick={resetAssessmentForm}>Cancel</button>
+              ) : null}
+              <button type="button" className="btn-gold" onClick={saveAssessment}>{editingAssessmentId ? 'Save Changes' : 'Add Assessment'}</button>
+            </div>
+              </div>
+
+              <div className="card animate-in stagger-3">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-bold">Grade Setup for {selectedClass}</h2>
+            </div>
+
+            <div className="rounded-xl overflow-hidden border mb-4" style={{ borderColor: '#E4E1D8' }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Lower</th>
+                    <th>Upper</th>
+                    <th>Grade</th>
+                    <th>Remark</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {grades.map((r) => (
+                    <tr key={r.id}>
+                      <td style={{ color: '#6B6660' }}>{r.lower}</td>
+                      <td style={{ color: '#6B6660' }}>{r.upper}</td>
+                      <td className="font-semibold">{r.grade}</td>
+                      <td style={{ color: '#6B6660' }}>{r.remark}</td>
+                      <td>
+                        <div className="flex gap-1">
+                          <button className="p-1.5 rounded hover:bg-gray-100" type="button" onClick={() => startEditGrade(r)}>
+                            <Pencil size={14} style={{ color: '#6B6660' }} />
+                          </button>
+                          <button className="p-1.5 rounded hover:bg-red-50" type="button" onClick={() => removeGrade(r.id)}>
+                            <Trash2 size={14} style={{ color: '#EF4444' }} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mb-4">
+              <div className="label">Export Grade Record To</div>
+              <textarea value={gradeCsv} readOnly className="input min-h-[96px]" />
+              <div className="flex flex-wrap gap-2 mt-2">
+                <button type="button" className="btn-outline text-sm flex items-center gap-2" onClick={() => downloadText(`grade_setup_${selectedClass}.csv`, gradeCsv, 'text/csv;charset=utf-8')}>
+                  <Download size={14} /> Export Grade Record
+                </button>
+                <input
+                  ref={gradeImportRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) importGradeCsv(file)
+                    e.target.value = ''
+                  }}
+                />
+                <button type="button" className="btn-outline text-sm flex items-center gap-2" onClick={() => gradeImportRef.current?.click()}>
+                  <Upload size={14} /> Import Grade Record
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <div className="label">Import Grade Record (Paste CSV)</div>
+              <textarea
+                value={gradeImportText}
+                onChange={(e) => setGradeImportText(e.target.value)}
+                className="input min-h-[96px]"
+                placeholder="Paste CSV here, then click Import"
+              />
+              <div className="flex justify-end mt-2">
+                <button type="button" className="btn-gold text-sm flex items-center gap-2" onClick={() => importGradeCsvText(gradeImportText)}>
+                  <Upload size={14} /> Import
+                </button>
+              </div>
+            </div>
+
+            <div className="label">New Grade Record</div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <input value={gradeLower} onChange={(e) => setGradeLower(e.target.value)} className="input" placeholder="Lower" />
+              <input value={gradeUpper} onChange={(e) => setGradeUpper(e.target.value)} className="input" placeholder="Upper" />
+              <input value={gradeValue} onChange={(e) => setGradeValue(e.target.value)} className="input" placeholder="Grade" />
+              <input value={gradeRemark} onChange={(e) => setGradeRemark(e.target.value)} className="input" placeholder="Remark (optional)" />
+            </div>
+            <div className="flex justify-end gap-2 mt-3">
+              {editingGradeId ? (
+                <button type="button" className="btn-outline" onClick={resetGradeForm}>Cancel</button>
+              ) : null}
+              <button type="button" className="btn-gold" onClick={saveGrade}>{editingGradeId ? 'Save Changes' : 'Add Grade'}</button>
+            </div>
+              </div>
+            </div>
+
+            <div className="card animate-in stagger-4 mt-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-bold">Behaviour & Skills Setup for {selectedClass}</h2>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <div className="rounded-xl overflow-hidden border" style={{ borderColor: '#E4E1D8' }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Behaviour</th>
+                        <th>Max Score</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {behaviours.map((r) => (
+                        <tr key={r.id}>
+                          <td className="font-medium">{r.name}</td>
+                          <td style={{ color: '#6B6660' }}>{r.max_score}</td>
+                          <td>
+                            <div className="flex gap-1">
+                              <button className="p-1.5 rounded hover:bg-gray-100" type="button" onClick={() => startEditBs(r)}>
+                                <Pencil size={14} style={{ color: '#6B6660' }} />
+                              </button>
+                              <button className="p-1.5 rounded hover:bg-red-50" type="button" onClick={() => removeBs(r.id)}>
+                                <Trash2 size={14} style={{ color: '#EF4444' }} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {behaviours.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} style={{ padding: 14 }}>
+                            <div className="text-sm" style={{ color: '#6B6660' }}>No behaviour items yet.</div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="rounded-xl overflow-hidden border" style={{ borderColor: '#E4E1D8' }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Skill</th>
+                        <th>Max Score</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {skills.map((r) => (
+                        <tr key={r.id}>
+                          <td className="font-medium">{r.name}</td>
+                          <td style={{ color: '#6B6660' }}>{r.max_score}</td>
+                          <td>
+                            <div className="flex gap-1">
+                              <button className="p-1.5 rounded hover:bg-gray-100" type="button" onClick={() => startEditBs(r)}>
+                                <Pencil size={14} style={{ color: '#6B6660' }} />
+                              </button>
+                              <button className="p-1.5 rounded hover:bg-red-50" type="button" onClick={() => removeBs(r.id)}>
+                                <Trash2 size={14} style={{ color: '#EF4444' }} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {skills.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} style={{ padding: 14 }}>
+                            <div className="text-sm" style={{ color: '#6B6660' }}>No skill items yet.</div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <div className="label">{editingBsId ? 'Edit Behaviour/Skill' : 'New Behaviour/Skill'}</div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <select className="select" value={bsType} onChange={(e) => setBsType(e.target.value as any)}>
+                    <option value="Behaviour">Behaviour</option>
+                    <option value="Skill">Skill</option>
+                  </select>
+                  <input value={bsName} onChange={(e) => setBsName(e.target.value)} className="input md:col-span-2" placeholder="Name" />
+                  <input value={bsMax} onChange={(e) => setBsMax(e.target.value)} className="input" placeholder="Max Score" />
+                </div>
+                <div className="flex justify-end gap-2 mt-3">
+                  {editingBsId ? (
+                    <button type="button" className="btn-outline" onClick={resetBsForm}>Cancel</button>
+                  ) : null}
+                  <button type="button" className="btn-gold" onClick={saveBs}>{editingBsId ? 'Save Changes' : 'Add'}</button>
+                </div>
+              </div>
+            </div>
+
+            <div className="card animate-in stagger-4 mt-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold">Student Mark Template for {selectedClass}</h3>
+              </div>
+              <div className="mt-3 rounded-xl p-3" style={{ background: '#F7F6F3', border: '1px solid #E4E1D8' }}>
+                <div className="text-sm" style={{ color: '#6B6660' }}>
+                  The class template can be configured based on the assessment and grade setup above.
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </AppLayout>
   )

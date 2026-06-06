@@ -261,6 +261,108 @@ export default function AssessmentSection({ mode = 'input' }: Props) {
     return { caTotal, exam: m?.exam, total, pct, grade: rule?.grade ?? '—', autoRemark: rule?.remark ?? '—' }
   }
 
+
+  // ── CSV helpers ─────────────────────────────────────────────────────────────
+  const escapeCsvCell = (v: unknown) => {
+    const raw = (v ?? '').toString()
+    return /[",\n\r]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw
+  }
+
+  const parseCsvText = (text: string) => {
+    const normalized = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    const lines = normalized.split('\n').filter(l => l.trim())
+    if (!lines.length) return { headers: [] as string[], rows: [] as string[][] }
+    const splitLine = (line: string) => {
+      const out: string[] = []; let cur = '', q = false
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i]
+        if (ch === '"') { if (q && line[i+1] === '"') { cur += '"'; i++; continue } q = !q; continue }
+        if (ch === ',' && !q) { out.push(cur); cur = ''; continue }
+        cur += ch
+      }
+      out.push(cur)
+      return out.map(v => v.trim())
+    }
+    return { headers: splitLine(lines[0]).map(h => h.trim()), rows: lines.slice(1).map(splitLine) }
+  }
+
+  // ── Export current scores as CSV ──────────────────────────────────────────
+  const downloadScoreSheet = () => {
+    const groupName    = currentGroup?.name ?? selectedGroupId
+    const subjectName  = subjectsForSelectedGroup.find((g: any) => g.subject_id === selectedSubjectId)?.subject ?? 'subject'
+    const headers      = ['Student ID', 'Student Name', ...activeCaRows.map(r => r.assessment), activeExamRow.assessment, 'Remark']
+    const rows         = studentRows.map(st => [
+      st.id, st.name,
+      ...activeCaRows.map(r => marksByStudent[st.id]?.ca?.[r.assessment] ?? ''),
+      marksByStudent[st.id]?.exam ?? '',
+      marksByStudent[st.id]?.remark ?? '',
+    ])
+    const csv = ['\uFEFF' + headers.map(escapeCsvCell).join(','), ...rows.map(r => r.map(escapeCsvCell).join(','))].join('\n')
+    const a = Object.assign(document.createElement('a'), {
+      href:     URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })),
+      download: `scores_${groupName}_${subjectName}.csv`.replace(/\s+/g, '_'),
+    })
+    document.body.appendChild(a); a.click(); a.remove()
+  }
+
+  // ── Import scores from CSV ────────────────────────────────────────────────
+  const importScoreSheet = (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.csv')) { toast.error('Please upload a .csv file.'); return }
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const text = typeof reader.result === 'string' ? reader.result : ''
+        const { headers, rows } = parseCsvText(text)
+        if (!headers.length) { toast.error('CSV is empty.'); return }
+
+        const norm   = (h: string) => h.toLowerCase().replace(/[\s_]+/g, '_')
+        const hMap   = new Map(headers.map((h, i) => [norm(h), i]))
+        const getIdx = (k: string) => hMap.get(k) ?? -1
+
+        const idxId   = getIdx('student_id') !== -1 ? getIdx('student_id') : getIdx('id')
+        const idxName = getIdx('student_name') !== -1 ? getIdx('student_name') : getIdx('name')
+        if (idxId === -1 && idxName === -1) { toast.error('CSV needs a "Student ID" or "Student Name" column.'); return }
+
+        let applied = 0
+        const next = { ...marksByStudent }
+
+        for (const row of rows) {
+          const rawId = idxId >= 0 ? (row[idxId] ?? '').trim() : ''
+          let stId = rawId && next[rawId] ? rawId : ''
+          if (!stId) {
+            const rawName = idxName >= 0 ? (row[idxName] ?? '').trim().toLowerCase() : ''
+            stId = studentRows.find(s => s.name.toLowerCase() === rawName)?.id ?? ''
+          }
+          if (!stId) continue
+
+          const prev = next[stId] ?? { ca: {}, exam: null, remark: '' }
+          const ca   = { ...prev.ca }
+
+          for (const r of activeCaRows) {
+            const idx = hMap.get(norm(r.assessment)) ?? -1
+            if (idx < 0) continue
+            const num = Number((row[idx] ?? '').trim())
+            if (Number.isFinite(num)) ca[r.assessment] = clamp(num, 0, r.max_score)
+          }
+
+          const examIdx = hMap.get(norm(activeExamRow.assessment)) ?? hMap.get('exam') ?? -1
+          const exam    = examIdx >= 0 ? Number((row[examIdx] ?? '').trim()) : NaN
+          const remarkIdx = hMap.get('remark') ?? -1
+          const remark  = remarkIdx >= 0 ? (row[remarkIdx] ?? '').trim() : prev.remark
+
+          next[stId] = { ca, exam: Number.isFinite(exam) ? clamp(exam, 0, examMax) : prev.exam, remark }
+          applied++
+        }
+
+        if (!applied) { toast.error('No matching students found in CSV.'); return }
+        setMarksByStudent(next)
+        setSaved(false)
+        toast.success(`Imported scores for ${applied} student(s). Click Save to write to DB.`)
+      } catch { toast.error('Could not read this CSV.') }
+    }
+    reader.readAsText(file)
+  }
+
   // ── Save to DB ────────────────────────────────────────────────────────────
   const saveMutation = useMutation({
     mutationFn: () => {
@@ -367,12 +469,27 @@ export default function AssessmentSection({ mode = 'input' }: Props) {
                 ))}
               </div>
               {!viewOnly && (
-                <button type="button" className="btn-gold flex items-center gap-2"
-                  disabled={!selectedGroupId || saveMutation.isPending}
-                  onClick={() => saveMutation.mutate()}>
-                  <Save size={14} />
-                  {saveMutation.isPending ? 'Saving...' : saved ? 'Saved ✓' : 'Save'}
-                </button>
+                <>
+                  <input
+                    type="file" accept=".csv" className="hidden"
+                    id="csv-import-ref"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) importScoreSheet(f); if (e.target) e.target.value = '' }}
+                  />
+                  <button type="button" className="btn-outline flex items-center gap-2 text-sm"
+                    onClick={downloadScoreSheet} title="Export scores as CSV">
+                    ↓ Export CSV
+                  </button>
+                  <button type="button" className="btn-outline flex items-center gap-2 text-sm"
+                    onClick={() => document.getElementById('csv-import-ref')?.click()} title="Import scores from CSV">
+                    ↑ Import CSV
+                  </button>
+                  <button type="button" className="btn-gold flex items-center gap-2"
+                    disabled={!selectedGroupId || saveMutation.isPending}
+                    onClick={() => saveMutation.mutate()}>
+                    <Save size={14} />
+                    {saveMutation.isPending ? 'Saving...' : saved ? 'Saved ✓' : 'Save'}
+                  </button>
+                </>
               )}
             </div>
           </div>

@@ -1,6 +1,9 @@
+'use client'
+
 import Sidebar from '@/components/layout/Sidebar'
 import Navbar from '@/components/layout/Navbar'
 import AppFooter from '@/components/layout/AppFooter'
+import LiveChatWidget from '@/components/admin/LiveChatWidget'
 import { useEffect, useState } from 'react'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -27,6 +30,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <main className="flex-1">{children}</main>
         <AppFooter />
       </div>
+      <LiveChatWidget />
     </div>
   )
 }

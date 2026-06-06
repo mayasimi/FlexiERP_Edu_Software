@@ -249,6 +249,14 @@ export const mockDatabase = {
     { id: 'att-summary-004', student_id: 'student-003', term_id: 'term-2025-2026-2', subject_id: null, present: 30, absent: 1, late: 0, total: 31 },
   ],
 
+  weekly_attendance: [
+    { id: 'weekly-att-001', student_id: 'student-001', section_id: 'section-ss2a', term_id: 'term-2025-2026-2', week: 'Week 1', week_start_date: '2026-01-12', week_end_date: '2026-01-18', status: 'present', days_present: 5, school_days: 5, teacher_notes: 'Present for the full week.' },
+    { id: 'weekly-att-002', student_id: 'student-001', section_id: 'section-ss2a', term_id: 'term-2025-2026-2', week: 'Week 2', week_start_date: '2026-01-19', week_end_date: '2026-01-25', status: 'present', days_present: 5, school_days: 5, teacher_notes: 'Present for the full week.' },
+    { id: 'weekly-att-003', student_id: 'student-001', section_id: 'section-ss2a', term_id: 'term-2025-2026-2', week: 'Week 3', week_start_date: '2026-01-26', week_end_date: '2026-02-01', status: 'absent', days_present: 3, school_days: 5, teacher_notes: 'Absent for two school days. Parent follow-up recommended.' },
+    { id: 'weekly-att-004', student_id: 'student-002', section_id: 'section-jss1b', term_id: 'term-2025-2026-2', week: 'Week 1', week_start_date: '2026-01-12', week_end_date: '2026-01-18', status: 'present', days_present: 4, school_days: 5, teacher_notes: 'One excused absence recorded.' },
+    { id: 'weekly-att-005', student_id: 'student-003', section_id: 'section-pry4a', term_id: 'term-2025-2026-2', week: 'Week 1', week_start_date: '2026-01-12', week_end_date: '2026-01-18', status: 'present', days_present: 5, school_days: 5, teacher_notes: 'Present for the full week.' },
+  ],
+
   timetable_periods: [
     { id: 'period-001', section_id: 'section-ss2a', subject_id: 'subject-math', staff_id: 'staff-001', day: 'Monday', starts_at: '08:00', ends_at: '08:45', room: 'Block A' },
     { id: 'period-002', section_id: 'section-ss2a', subject_id: 'subject-physics', staff_id: 'staff-002', day: 'Wednesday', starts_at: '10:00', ends_at: '10:45', room: 'Physics Lab' },
@@ -358,12 +366,8 @@ const getStudentPortalDashboard = (studentId: string) => {
       subject: mockDatabase.subjects.find((subject) => subject.id === mark.subject_id),
       teacher: mockDatabase.subject_assignments.find((assignment) => assignment.subject_id === mark.subject_id && assignment.section_id === section?.id),
     }))
-  const attendance = mockDatabase.attendance_summaries
-    .filter((item) => item.student_id === studentId)
-    .map((item) => ({
-      ...item,
-      subject: item.subject_id ? mockDatabase.subjects.find((subject) => subject.id === item.subject_id) : null,
-    }))
+  const attendance = mockDatabase.weekly_attendance
+    .filter((item) => item.student_id === studentId && item.term_id === activeTerm?.id)
   const timetable = mockDatabase.timetable_periods
     .filter((item) => item.section_id === section?.id)
     .map((period) => ({
@@ -502,7 +506,7 @@ export const mockApiResponses = {
     section: mockDatabase.sections[0],
     invoices: mockDatabase.invoices,
     marks: mockDatabase.exam_marks.filter((mark) => mark.student_id === 'student-001'),
-    attendance: mockDatabase.attendance_records.filter((record) => record.student_id === 'student-001'),
+    attendance: mockDatabase.weekly_attendance.filter((record) => record.student_id === 'student-001'),
   },
 
   '/student/dashboard': getStudentPortalDashboard('student-001'),

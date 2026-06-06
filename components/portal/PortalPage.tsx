@@ -17,6 +17,7 @@ import { StudentProjects } from './StudentProjects'
 // ── Keep using PortalViews for sections not yet reworked ──────────────────
 import { ReportCard, ParentNotifications } from './PortalViews'
 
+import { SchoolPolicyHandbook } from './PortalViews'
 import { SchemeOfWorkView } from '@/components/dashboard/StudentDashboard'
 import { PageType, RoleType } from './portalTypes'
 import { portalApi } from '@/lib/api'
@@ -32,6 +33,7 @@ const PAGE_TITLES: Record<PageType, string> = {
   notifications: 'Notifications',
   projects:      'Assignments/Projects',
   scheme:        'Scheme of Work',
+  policy:        'School Policy & Student Handbook',
 }
 
 export default function PortalPage() {
@@ -52,9 +54,12 @@ export default function PortalPage() {
   // ── URL param for notifications ────────────────────────────────────────
   useEffect(() => {
     const pageParam = searchParams.get('page')
-    if (pageParam === 'notifications') {
-      setRole('parent')
-      setPage('notifications')
+    if (pageParam && Object.prototype.hasOwnProperty.call(PAGE_TITLES, pageParam)) {
+      const nextPage = pageParam as PageType
+      if (nextPage === 'notifications' || nextPage === 'switch') {
+        setRole('parent')
+      }
+      setPage(nextPage)
     }
   }, [searchParams])
 
@@ -96,11 +101,13 @@ export default function PortalPage() {
           />
         )
       case 'notifications':
-        return <ParentNotifications selectedNotificationId={selectedNotificationId} />
+        return <ParentNotifications selectedNotificationId={selectedNotificationId} baseHref="/portal?page=notifications" />
       case 'projects':
         return <StudentProjects studentId={selectedChildId} />
       case 'scheme':
         return <SchemeOfWorkView />
+      case 'policy':
+        return <SchoolPolicyHandbook role={role} />
       default:
         return <Dashboard role={role} studentId={selectedChildId} />
     }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { GOLD, BORDER, TEXT, TEXT2, TEXT3, GREEN, BLUE, RED, getGrade } from '@/constants'
 import Avatar from '@/components/ui/Avatar'
 import Card, { CardLabel } from '@/components/ui/Card'
@@ -30,8 +30,9 @@ const mockData = {
       { name: 'Biology', teacher: 'Mr. Emeka', ca1: 17, ca2: 16, midterm: 32 },
     ],
     attendance: [
-      { subject: 'Mathematics', present: 28, absent: 2, late: 1, total: 31 },
-      { subject: 'English Language', present: 30, absent: 1, late: 0, total: 31 },
+      { week: 'Week 1', weekStart: '2026-01-12', weekEnd: '2026-01-18', status: 'present', daysPresent: 5, schoolDays: 5 },
+      { week: 'Week 2', weekStart: '2026-01-19', weekEnd: '2026-01-25', status: 'present', daysPresent: 5, schoolDays: 5 },
+      { week: 'Week 3', weekStart: '2026-01-26', weekEnd: '2026-02-01', status: 'absent', daysPresent: 3, schoolDays: 5 },
     ],
     fees: {
       structure: [
@@ -279,9 +280,110 @@ function getSchemeTopicDetails(subject: string, topic: string) {
 
 export function SchemeOfWorkView() {
   const handleDownloadPdf = () => window.print()
+  const [subjectQuery, setSubjectQuery] = useState('Mathematics')
+  const [termQuery, setTermQuery] = useState('2nd Term')
+  const [classQuery, setClassQuery] = useState('SS2')
+  const [searchResults, setSearchResults] = useState<Array<{
+    id: string
+    week: string
+    theme: string
+    subject: string
+    class: string
+    term: string
+    topic: string
+    objective: string
+    assessment: string
+    teacher: string
+  }> | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
+  const [searchError, setSearchError] = useState('')
+
+  const searchScheme = async () => {
+    if (!subjectQuery.trim()) {
+      setSearchError('Enter a subject to search.')
+      return
+    }
+
+    setIsSearching(true)
+    setSearchError('')
+
+    try {
+      const params = new URLSearchParams({ subject: subjectQuery.trim() })
+      if (termQuery.trim()) params.set('term', termQuery.trim())
+      if (classQuery.trim()) params.set('class', classQuery.trim())
+
+      const response = await fetch(`/api/scheme-of-work?${params.toString()}`)
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.message || 'Unable to search scheme of work.')
+      setSearchResults(payload.data || [])
+    } catch (error) {
+      setSearchError(error instanceof Error ? error.message : 'Unable to search scheme of work.')
+    } finally {
+      setIsSearching(false)
+    }
+  }
 
   return (
     <section style={{ display: 'grid', gap: 20 }}>
+      <Card style={{ borderRadius: 16, display: 'grid', gap: 14 }}>
+        <div>
+          <h2 style={{ margin: 0, color: TEXT, fontSize: 20, fontWeight: 800 }}>Search Scheme of Work</h2>
+          <p style={{ margin: '5px 0 0', color: TEXT2, fontSize: 13 }}>Find weekly topics by subject, term, and class.</p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px,1fr) minmax(140px,0.7fr) minmax(140px,0.7fr) auto', gap: 10, alignItems: 'end' }}>
+          <label style={{ display: 'grid', gap: 5 }}>
+            <span style={{ color: TEXT2, fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.8 }}>Subject</span>
+            <input value={subjectQuery} onChange={(event) => setSubjectQuery(event.target.value)} placeholder="e.g. Mathematics" style={{ border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px', outlineColor: GOLD }} />
+          </label>
+          <label style={{ display: 'grid', gap: 5 }}>
+            <span style={{ color: TEXT2, fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.8 }}>Term</span>
+            <input value={termQuery} onChange={(event) => setTermQuery(event.target.value)} placeholder="Optional" style={{ border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px', outlineColor: GOLD }} />
+          </label>
+          <label style={{ display: 'grid', gap: 5 }}>
+            <span style={{ color: TEXT2, fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.8 }}>Class</span>
+            <input value={classQuery} onChange={(event) => setClassQuery(event.target.value)} placeholder="Optional" style={{ border: `1px solid ${BORDER}`, borderRadius: 8, padding: '10px 12px', outlineColor: GOLD }} />
+          </label>
+          <button type="button" onClick={searchScheme} disabled={isSearching} style={{ border: 'none', background: GOLD, color: '#0D0D0D', borderRadius: 8, padding: '11px 16px', fontSize: 13, fontWeight: 900, cursor: isSearching ? 'wait' : 'pointer' }}>
+            {isSearching ? 'Searching...' : 'Search'}
+          </button>
+        </div>
+        {searchError && <p style={{ margin: 0, color: RED, fontSize: 13, fontWeight: 700 }}>{searchError}</p>}
+      </Card>
+
+      {searchResults && (
+        <Card style={{ borderRadius: 16, padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: 16, borderBottom: `1px solid ${BORDER}`, display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+            <CardLabel>Search Results</CardLabel>
+            <GoldBadge>{searchResults.length} found</GoldBadge>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: '#FAFAF8', borderBottom: `1px solid ${BORDER}` }}>
+                  {['Week', 'Subject', 'Topic', 'Teacher', 'Assessment'].map((header) => (
+                    <th key={header} style={{ padding: '10px 12px', textAlign: 'left', color: TEXT2, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8 }}>{header}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {searchResults.map((item) => (
+                  <tr key={item.id} style={{ borderBottom: `1px solid ${BORDER}` }}>
+                    <td style={{ padding: '12px', fontWeight: 800, color: TEXT }}>{item.week}<br /><span style={{ color: TEXT3, fontSize: 11, fontWeight: 600 }}>{item.theme}</span></td>
+                    <td style={{ padding: '12px', color: TEXT2 }}>{item.subject}<br /><span style={{ color: TEXT3, fontSize: 11 }}>{item.class} / {item.term}</span></td>
+                    <td style={{ padding: '12px', color: TEXT, minWidth: 260 }}><strong>{item.topic}</strong><br /><span style={{ color: TEXT2, fontSize: 12 }}>{item.objective}</span></td>
+                    <td style={{ padding: '12px', color: GOLD, fontWeight: 800 }}>{item.teacher}</td>
+                    <td style={{ padding: '12px', color: TEXT2, minWidth: 220 }}>{item.assessment}</td>
+                  </tr>
+                ))}
+                {searchResults.length === 0 && (
+                  <tr><td colSpan={5} style={{ padding: 22, textAlign: 'center', color: TEXT2 }}>No scheme entries match this search.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
       <div className='scheme-print-actions'>
         <Card style={{ borderRadius: 18, boxShadow: '0 10px 28px rgba(15, 23, 42, 0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
           <div>
@@ -442,7 +544,11 @@ function LegacyStudentDashboard() {
     [d.fees.structure]
   )
   const avgAttendance = useMemo(
-    () => Math.round(d.attendance.reduce((sum, item) => sum + (item.present / item.total) * 100, 0) / d.attendance.length),
+    () => {
+      const schoolDays = d.attendance.reduce((sum, item) => sum + item.schoolDays, 0)
+      const daysPresent = d.attendance.reduce((sum, item) => sum + item.daysPresent, 0)
+      return schoolDays > 0 ? Math.round((daysPresent / schoolDays) * 100) : 0
+    },
     [d.attendance]
   )
 

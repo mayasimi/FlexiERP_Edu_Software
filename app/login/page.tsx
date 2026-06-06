@@ -1,16 +1,13 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, BookOpen } from 'lucide-react'
-import { useAuthStore } from '@/lib/auth-store'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 import AppFooter from '@/components/layout/AppFooter'
 import toast from 'react-hot-toast'
-import { ApiError } from '@/lib/api/client';
-import Image from 'next/image';
+import { useAuthStore } from '@/lib/auth-store'
+import Image from 'next/image'
 
 export default function LoginPage() {
-  const router = useRouter()
-  const { login, isLoading, role } = useAuthStore()
+  const { login, isLoading } = useAuthStore()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
@@ -25,34 +22,33 @@ export default function LoginPage() {
     }
   }, [])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault()
-  try {
-    await login(email, password)
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    try {
+      await login(email, password)
+      if (remember) {
+        localStorage.setItem('edu_remember_email', email)
+      } else {
+        localStorage.removeItem('edu_remember_email')
+      }
+      toast.success('Welcome back!')
 
-    if (remember) {
-      localStorage.setItem('edu_remember_email', email)
-    } else {
-      localStorage.removeItem('edu_remember_email')
+      const currentRole = useAuthStore.getState().role
+
+      if (currentRole === 'parent' || currentRole === 'student') {
+        window.location.href = '/portal'
+      } else if (currentRole === 'teacher') {
+        window.location.href = '/instructor-dashboard'
+      } else {
+        window.location.href = '/dashboard'
+      }
+    } catch (err: any) {
+      const message = err?.response?.data?.message ?? 'Invalid credentials. Please try again.'
+      setError(message)
+      toast.error(message)
     }
-
-    toast.success('Welcome back!')
-
-    // Read role AFTER login completes
-    const currentRole = useAuthStore.getState().role
-
-  if (currentRole === 'parent' || currentRole === 'student') {
-      window.location.href = '/portal'
-    } else if (currentRole === 'teacher') {
-      window.location.href = '/instructor-dashboard'
-    } else {
-      window.location.href = '/dashboard'
   }
-
-  } catch {
-    toast.error('Invalid credentials. Please try again.')
-  }
-}
 
   return (
     <div className="min-h-screen flex flex-col"
@@ -60,17 +56,15 @@ export default function LoginPage() {
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-10">
 
       {/* Logo */}
-      <div className="flex items-center gap-3 mb-8">
-        <div className="flex items-center justify-center">
+      <div className="flex items-center justify-center gap-3 mb-8">
           <Image
             src="/FLEXI_LOGO.png"
-            alt="FlexiSoftware Logo"
-            width={160}
-            height={60}
+            alt="FlexiERP Logo"
+            width={200}
+            height={200}
             priority
             className="object-contain"
           />
-        </div>
       </div>
 
       {/* Card */}
@@ -79,6 +73,12 @@ export default function LoginPage() {
 
         <h1 className="text-2xl font-bold text-center mb-1" style={{ color: '#0D0D0D' }}>Welcome Back</h1>
         <p className="text-sm text-center mb-7" style={{ color: '#6B6660' }}>Sign in to your account</p>
+         
+        {error && (
+          <p role="alert" style={{ color: 'red', margin: 0 }}>
+            {error}
+          </p>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
@@ -87,9 +87,10 @@ export default function LoginPage() {
             <input
               type="email"
               value={email}
-              onChange={e => setEmail(e.target.value)}
+              onChange={(e) => setEmail(e.target.value)}
               placeholder="admin@school.com"
               required
+              autoComplete="email"
               className="input"
             />
           </div>
@@ -113,9 +114,10 @@ export default function LoginPage() {
                 onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
+                autoComplete="current-password"
                 className="input pr-11"
               />
-              <button type="button" onClick={() => setShowPw(!showPw)}
+              <button type="button" onClick={() => setShowPw(v => !v)}
                       className="absolute right-3 top-1/2 -translate-y-1/2"
                       style={{ color: '#6B6660' }}>
                 {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -137,7 +139,7 @@ export default function LoginPage() {
         </form>
 
         <div className="mt-6 text-center">
-          <a href="/portal" className="text-sm font-medium" style={{ color: '#C9A020' }}>
+          <a href="#" className="text-sm font-medium" style={{ color: '#C9A020' }}>
             Try demo version
           </a>
         </div>
