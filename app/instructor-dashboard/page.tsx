@@ -4,7 +4,8 @@ import { useState } from 'react'
 import Image from 'next/image'
 import {
   LayoutDashboard, ClipboardCheck, CalendarDays, FileText,
-  Users, BarChart3, LogOut, BookOpen, MessageCircle
+  Users, BarChart3, LogOut, BookOpen, MessageCircle,
+  ClipboardList
 } from 'lucide-react'
 import { useAuthStoreMounted } from '@/lib/auth-store'
 import type { Section } from './_types'
@@ -16,6 +17,8 @@ import GroupsSection       from './_sections/GroupsSection'
 import PerformanceSection  from './_sections/PerformanceSection'
 import LessonPlanSection   from './_sections/LessonPlanSection'
 import MessagesSection     from './_sections/MessagesSection'
+import TeacherAssignmentsSection from './_sections/TeacherAssignmentsSection'
+
 import Navbar from '@/components/layout/Navbar'
 
 const sidebarItems: { id: Section; label: string; icon: typeof LayoutDashboard }[] = [
@@ -24,6 +27,7 @@ const sidebarItems: { id: Section; label: string; icon: typeof LayoutDashboard }
   { id: 'schedule',     label: 'My Schedule',      icon: CalendarDays    },
   { id: 'assessment',   label: 'Assessment',       icon: FileText        },
   { id: 'lesson-plans', label: 'Lesson Plans',     icon: BookOpen        },
+  { id: 'assignments',  label: 'Assignments',      icon: ClipboardList },
   { id: 'groups',       label: 'Student Groups',   icon: Users           },
   { id: 'performance',  label: 'Class Performance',icon: BarChart3       },
   { id: 'messages',     label: 'Messages',         icon: MessageCircle   },
@@ -138,6 +142,7 @@ export default function InstructorDashboardPage() {
         {activeSection === 'schedule'     && <ScheduleSection    />}
         {activeSection === 'assessment'   && <AssessmentSection  />}
         {activeSection === 'lesson-plans' && <LessonPlanSection  />}
+        {activeSection === 'assignments'  && <TeacherAssignmentsSection />}
         {activeSection === 'groups'       && <GroupsSection      />}
         {activeSection === 'performance'  && <PerformanceSection />}
         {activeSection === 'messages'     && <MessagesSection    />}

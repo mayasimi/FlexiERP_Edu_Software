@@ -1,360 +1,514 @@
 'use client'
-import { useState } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
-import { teacherApi } from '@/lib/api'
-import { Plus, Edit2, Save, X, Users, Calendar, Award, Percent } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Save } from 'lucide-react'
 import { PageHeader, StudentAvatar } from '../_components'
-import { MOCK_ASSESSMENTS, MOCK_GRADING_STUDENTS, MOCK_GROUPS } from '../_mock-data'
-import type { Assessment, AssessmentCategory, StudentGrade } from '../_types'
+import { teacherApi } from '@/lib/api'
+import { useAuthStore } from '@/lib/auth-store'
+import toast from 'react-hot-toast'
 
-const typeStyle: Record<string, string> = { Exam: 'badge-red', Quiz: 'badge-gold', Assignment: 'badge-blue', Lab: 'badge-green', CTA: 'badge-gold' }
-const statusStyle: Record<string, { bg: string; text: string }> = {
-  upcoming: { bg: '#F3F4F6', text: '#4B5563' },
-  grading: { bg: '#FEF3C7', text: '#92400E' },
-  completed: { bg: '#ECFDF5', text: '#065F46' },
+// ── Types ──────────────────────────────────────────────────────────────────
+type AssessmentRecord = { id: string; assessment: string; max_score: number }
+type GradeRecord      = { id: string; lower: number; upper: number; grade: string; remark: string }
+type Tab              = 'CA' | 'Exam'
+type StudentRow       = { id: string; name: string; avatar: string }
+type StudentMarks     = { ca: Record<string, number | null>; exam: number | null; remark: string }
+type Mode             = 'input' | 'view'
+type Props            = { mode?: Mode }
+
+const DEFAULT_GRADES: GradeRecord[] = [
+  { id: 'gr-1', lower: 75, upper: 100, grade: 'A1', remark: 'EXCELLENT'  },
+  { id: 'gr-2', lower: 70, upper: 74,  grade: 'B2', remark: 'VERY GOOD'  },
+  { id: 'gr-3', lower: 65, upper: 69,  grade: 'B3', remark: 'GOOD'       },
+  { id: 'gr-4', lower: 60, upper: 64,  grade: 'C4', remark: 'CREDIT'     },
+  { id: 'gr-5', lower: 55, upper: 59,  grade: 'C5', remark: 'CREDIT'     },
+  { id: 'gr-6', lower: 50, upper: 54,  grade: 'C6', remark: 'CREDIT'     },
+  { id: 'gr-7', lower: 45, upper: 49,  grade: 'D7', remark: 'PASS'       },
+  { id: 'gr-8', lower: 40, upper: 44,  grade: 'E8', remark: 'PASS'       },
+  { id: 'gr-9', lower: 0,  upper: 39,  grade: 'F9', remark: 'FAIL'       },
+]
+
+const DEFAULT_CA_ROWS: AssessmentRecord[] = [
+  { id: 'ca-1', assessment: 'CA 1', max_score: 20 },
+  { id: 'ca-2', assessment: 'CA 2', max_score: 20 },
+]
+const DEFAULT_EXAM_ROW: AssessmentRecord = { id: 'ex-1', assessment: 'Exam', max_score: 60 }
+
+const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
+const toInitials = (name: string) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  return ((parts[0]?.[0] ?? '') + (parts[parts.length - 1]?.[0] ?? '')).toUpperCase()
 }
 
-export default function AssessmentSection() {
-  const [assessments, setAssessments] = useState<Assessment[]>(MOCK_ASSESSMENTS)
-  const [selectedAssessment, setSelectedAssessment] = useState<Assessment | null>(null)
-  const [grades, setGrades] = useState<StudentGrade[]>([])
-  const [activeTab, setActiveTab] = useState<AssessmentCategory | 'all'>('all')
-  const [filterType, setFilterType] = useState('all')
-  const [filterStatus, setFilterStatus] = useState('all')
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [gradesSaved, setGradesSaved] = useState(false)
-  const [form, setForm] = useState({
-    title: '', type: 'Exam' as Assessment['type'], category: 'CA' as AssessmentCategory,
-    group_id: 'g10a', group: 'Class 10A', subject: 'Advanced Physics', date: '', maxMarks: 100, weight: 10,
+export default function AssessmentSection({ mode = 'input' }: Props) {
+  const viewOnly    = mode === 'view'
+  const queryClient = useQueryClient()
+  const { user }    = useAuthStore()
+
+  const [selectedGroupId,   setSelectedGroupId]   = useState<string>('')
+  const [selectedSubjectId, setSelectedSubjectId] = useState<number>(0)
+  const [activeTab,         setActiveTab]          = useState<Tab>('CA')
+  const [marksByStudent,    setMarksByStudent]     = useState<Record<string, StudentMarks>>({})
+  const [saved,             setSaved]              = useState(false)
+
+  // ── Track whether we've already seeded marks from DB for this context ─────
+  // This prevents the grades refetch after save from overwriting what the
+  // teacher is currently typing.
+  const initialisedForRef = useRef<string>('')   // key = `${groupId}|${subjectId}|${tab}`
+
+  // ── 1. Teacher's groups ───────────────────────────────────────────────────
+  const { data: groups = [], isLoading: groupsLoading } = useQuery({
+    queryKey: ['teacher-groups'],
+    queryFn:  () => teacherApi.getGroups().then(r => r.data),
   })
 
-  const { data: assessments } = useQuery({
-    queryKey: ['teacher-assessments', selectedSection],
-    queryFn: () => teacherApi.getAssessments(selectedSection).then(r => r.data),
-    placeholderData: [],
-  })
-
-  const { data: gradingStudents, refetch } = useQuery({
-    queryKey: ['assessment-grades', selectedAssessment],
-    queryFn: () => teacherApi.getAssessmentGrades(selectedAssessment).then(r => r.data),
-    enabled: !!selectedAssessment,
-    placeholderData: [],
-  })
-
-  const saveMutation = useMutation({
-    mutationFn: (grades: any[]) => teacherApi.saveGrades(selectedAssessment, grades),
-    onSuccess: () => toast.success('Grades saved!'),
-  })
-
-  const openGrading = (a: Assessment) => {
-    setSelectedAssessment(a)
-    setGrades(MOCK_GRADING_STUDENTS.map(s => ({ ...s })))
-    setGradesSaved(false)
-  }
-
-  const updateGrade = (studentId: string, field: 'marks' | 'remarks', value: string | number | null) => {
-    setGrades(prev => prev.map(g => g.student_id === studentId ? { ...g, [field]: value } : g))
-    setGradesSaved(false)
-  }
-
-  const handleCreate = () => {
-    const newAssessment: Assessment = {
-      id: String(Date.now()), title: form.title, type: form.type, category: form.category,
-      group: form.group, group_id: form.group_id, subject: form.subject,
-      date: form.date, maxMarks: form.maxMarks, weight: form.weight, status: 'upcoming',
+  useEffect(() => {
+    if (groups.length > 0 && !selectedGroupId) {
+      setSelectedGroupId(groups[0].id)
+      setSelectedSubjectId(groups[0].subject_id ?? 0)
     }
-    setAssessments(prev => [newAssessment, ...prev])
-    setShowCreateModal(false)
-    setForm({ title: '', type: 'Exam', category: 'CA', group_id: 'g10a', group: 'Class 10A', subject: 'Advanced Physics', date: '', maxMarks: 100, weight: 10 })
-  }
+  }, [groups, selectedGroupId])
 
-  const filtered = assessments.filter(a => {
-    if (activeTab !== 'all' && a.category !== activeTab) return false
-    if (filterType !== 'all' && a.type !== filterType) return false
-    if (filterStatus !== 'all' && a.status !== filterStatus) return false
-    return true
+  const uniqueGroups            = groups.filter((g: any, i: number, arr: any[]) => arr.findIndex((x: any) => x.id === g.id) === i)
+  const subjectsForSelectedGroup = groups.filter((g: any) => g.id === selectedGroupId)
+  const currentGroup            = uniqueGroups.find((g: any) => g.id === selectedGroupId)
+
+  // ── 2. Assessments for selected section ───────────────────────────────────
+  const { data: assessments = [] } = useQuery({
+    queryKey: ['teacher-assessments', selectedGroupId],
+    queryFn:  () => teacherApi.getAssessments(selectedGroupId).then(r => r.data),
+    enabled:  !!selectedGroupId,
   })
 
-  // Calculate CA vs Exam weight totals per group
-  const getWeightSummary = (groupId: string) => {
-    const groupAssessments = assessments.filter(a => a.group_id === groupId)
-    const caWeight = groupAssessments.filter(a => a.category === 'CA').reduce((sum, a) => sum + a.weight, 0)
-    const examWeight = groupAssessments.filter(a => a.category === 'Exam').reduce((sum, a) => sum + a.weight, 0)
-    return { caWeight, examWeight, total: caWeight + examWeight }
+  const subjectAssessments = assessments.filter((a: any) =>
+    !selectedSubjectId || Number(a.subject_id) === Number(selectedSubjectId)
+  )
+
+  const caRows: AssessmentRecord[] = subjectAssessments
+    .filter((a: any) => a.category === 'CA')
+    .map((a: any) => ({ id: String(a.id), assessment: a.title, max_score: a.maxMarks }))
+
+  const examAssessment = subjectAssessments.find((a: any) => a.category === 'Exam')
+  const examRow: AssessmentRecord = examAssessment
+    ? { id: String(examAssessment.id), assessment: examAssessment.title, max_score: examAssessment.maxMarks }
+    : DEFAULT_EXAM_ROW
+
+  const activeCaRows  = caRows.length > 0 ? caRows : DEFAULT_CA_ROWS
+  const activeExamRow = examRow
+  const caMax         = activeCaRows.reduce((s, r) => s + r.max_score, 0)
+  const examMax       = activeExamRow.max_score
+  const totalMax      = caMax + examMax
+
+  // ── 3. Students ───────────────────────────────────────────────────────────
+  const { data: students = [], isLoading: studentsLoading } = useQuery({
+    queryKey: ['group-students', selectedGroupId],
+    queryFn:  () => teacherApi.getGroupStudents(selectedGroupId).then(r => r.data),
+    enabled:  !!selectedGroupId,
+  })
+
+  const studentRows: StudentRow[] = students.map((s: any) => ({
+    id:     String(s.id),
+    name:   s.name,
+    avatar: s.avatar ?? toInitials(s.name),
+  }))
+
+  // ── 4. Existing grades — fetched per assessment ───────────────────────────
+  // We fetch ALL CA assessments + exam and merge them, so the teacher sees
+  // all previously saved scores when they open the page.
+  // Key insight: we fetch once per context change, NOT after every save.
+  const allAssessmentIds = [
+    ...activeCaRows.filter(r => !isNaN(Number(r.id))).map(r => r.id),
+    ...(examAssessment ? [String(examAssessment.id)] : []),
+  ]
+
+  // Fetch grades for the first CA assessment (representative — all share same student list)
+  const primaryAssessmentId = activeCaRows[0]?.id && !isNaN(Number(activeCaRows[0].id))
+    ? activeCaRows[0].id
+    : examAssessment ? String(examAssessment.id) : null
+
+  const { data: existingGrades = [], dataUpdatedAt } = useQuery({
+    queryKey: ['assessment-grades', selectedGroupId, selectedSubjectId],
+    queryFn:  async () => {
+      // Fetch grades for ALL assessments of this subject in parallel
+      const ids = [
+        ...subjectAssessments
+          .filter((a: any) => !isNaN(Number(a.id)))
+          .map((a: any) => String(a.id)),
+      ]
+      if (ids.length === 0) return []
+      const results = await Promise.all(
+        ids.map(id => teacherApi.getAssessmentGrades(id).then(r =>
+          (r.data as any[]).map((g: any) => ({ ...g, assessment_id: id }))
+        ))
+      )
+      return results.flat()
+    },
+    enabled:           !!selectedGroupId && subjectAssessments.length > 0,
+    // CRITICAL: do not refetch automatically — only refetch on explicit context change
+    staleTime:         Infinity,
+    refetchOnMount:    false,
+    refetchOnFocus:    false,
+  })
+
+  // ── Seed marks from DB — only once per (group, subject, tab) context ──────
+  const initialisationKey = `${selectedGroupId}|${selectedSubjectId}|${activeTab}`
+
+  useEffect(() => {
+    // Only run when context changes (different class/subject/tab) or students first load
+    if (studentRows.length === 0) return
+    if (initialisedForRef.current === initialisationKey) return  // already seeded — don't overwrite
+
+    // Build a map: assessment_id → student_id → marks
+    const gradeMap: Record<string, Record<string, number | null>> = {}
+    const remarkMap: Record<string, string> = {}
+
+    existingGrades.forEach((g: any) => {
+      const aId = String(g.assessment_id)
+      if (!gradeMap[aId]) gradeMap[aId] = {}
+      gradeMap[aId][String(g.student_id)] = g.marks
+      if (g.remarks) remarkMap[String(g.student_id)] = g.remarks
+    })
+
+    const next: Record<string, StudentMarks> = {}
+    for (const st of studentRows) {
+      // CA marks: look up each CA assessment separately
+      const ca: Record<string, number | null> = {}
+      for (const r of activeCaRows) {
+        ca[r.assessment] = gradeMap[r.id]?.[st.id] ?? null
+      }
+      // Exam marks
+      const examId = examAssessment ? String(examAssessment.id) : null
+      const exam   = examId ? gradeMap[examId]?.[st.id] ?? null : null
+
+      next[st.id] = {
+        ca,
+        exam,
+        remark: remarkMap[st.id] ?? '',
+      }
+    }
+
+    setMarksByStudent(next)
+    setSaved(false)
+    initialisedForRef.current = initialisationKey   // mark as seeded
+  }, [initialisationKey, studentRows.length, existingGrades.length])
+  // NOTE: intentionally NOT including marksByStudent — that would cause overwrite loop
+
+  // ── Reset initialisation flag when context changes ────────────────────────
+  useEffect(() => {
+    initialisedForRef.current = ''  // force re-seed when group/subject/tab changes
+  }, [selectedGroupId, selectedSubjectId, activeTab])
+
+  // ── Invalidate grades cache when context changes so fresh data loads ───────
+  useEffect(() => {
+    if (selectedGroupId && selectedSubjectId) {
+      queryClient.invalidateQueries({
+        queryKey: ['assessment-grades', selectedGroupId, selectedSubjectId],
+      })
+    }
+  }, [selectedGroupId, selectedSubjectId])
+
+  // ── Update helpers — these ONLY update local state, never touch DB ─────────
+  const updateCa = (studentId: string, assessment: string, value: string) => {
+    const max     = activeCaRows.find(r => r.assessment === assessment)?.max_score ?? 0
+    const trimmed = value.trim()
+    const num     = trimmed === '' ? null : Number(trimmed)
+    const v       = num === null || !Number.isFinite(num) ? null : clamp(num, 0, max)
+    setMarksByStudent(prev => ({
+      ...prev,
+      [studentId]: {
+        ca:     { ...(prev[studentId]?.ca ?? {}), [assessment]: v },
+        exam:   prev[studentId]?.exam ?? null,
+        remark: prev[studentId]?.remark ?? '',
+      },
+    }))
+    setSaved(false)
   }
+
+  const updateExam = (studentId: string, value: string) => {
+    const trimmed = value.trim()
+    const num     = trimmed === '' ? null : Number(trimmed)
+    const v       = num === null || !Number.isFinite(num) ? null : clamp(num, 0, examMax)
+    setMarksByStudent(prev => ({
+      ...prev,
+      [studentId]: {
+        ca:     prev[studentId]?.ca ?? {},
+        exam:   v,
+        remark: prev[studentId]?.remark ?? '',
+      },
+    }))
+    setSaved(false)
+  }
+
+  const updateRemark = (studentId: string, value: string) => {
+    setMarksByStudent(prev => ({
+      ...prev,
+      [studentId]: {
+        ca:     prev[studentId]?.ca ?? {},
+        exam:   prev[studentId]?.exam ?? null,
+        remark: value,
+      },
+    }))
+    setSaved(false)
+  }
+
+  const computeTotals = (studentId: string) => {
+    const m       = marksByStudent[studentId]
+    const caTotal = Object.values(m?.ca ?? {}).reduce<number>((sum, v) => sum + (v ?? 0), 0)
+    const exam    = m?.exam ?? 0
+    const total   = caTotal + exam
+    const pct     = totalMax > 0 ? Math.round((total / totalMax) * 1000) / 10 : 0
+    const rule    = DEFAULT_GRADES.find(g => pct >= g.lower && pct <= g.upper) ?? null
+    return { caTotal, exam: m?.exam, total, pct, grade: rule?.grade ?? '—', autoRemark: rule?.remark ?? '—' }
+  }
+
+  // ── Save to DB ────────────────────────────────────────────────────────────
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const promises: Promise<any>[] = []
+
+      if (activeTab === 'Exam' && examAssessment) {
+        const grades = studentRows.map(st => ({
+          student_id: st.id,
+          marks:      marksByStudent[st.id]?.exam ?? null,
+          remarks:    marksByStudent[st.id]?.remark ?? '',
+        }))
+        promises.push(teacherApi.saveGrades(String(examAssessment.id), grades))
+      }
+
+      if (activeTab === 'CA') {
+        for (const row of activeCaRows) {
+          if (!row.id || isNaN(Number(row.id))) continue  // skip default placeholders
+          const grades = studentRows.map(st => ({
+            student_id: st.id,
+            marks:      marksByStudent[st.id]?.ca?.[row.assessment] ?? null,
+            remarks:    marksByStudent[st.id]?.remark ?? '',
+          }))
+          promises.push(teacherApi.saveGrades(row.id, grades))
+        }
+      }
+
+      if (promises.length === 0) {
+        const tabLabel = activeTab === 'CA' ? 'CA' : 'Exam'
+        toast.error(`No ${tabLabel} assessments found in DB for this subject. Ask admin to create them.`)
+        return Promise.resolve()
+      }
+
+      return Promise.all(promises)
+    },
+    onSuccess: () => {
+      toast.success('Grades saved!')
+      setSaved(true)
+      // Update the ref so next load still reads from DB correctly
+      // but do NOT invalidate — that would trigger a re-seed and overwrite current state
+      // Teacher can refresh manually if they want to reload from DB
+    },
+    onError: () => toast.error('Failed to save grades.'),
+  })
 
   return (
     <div>
-      <PageHeader title="Assessment & Grading" subtitle="Manage Continuous Assessment (CA) and Terminal Examinations separately."
-        action={{ label: 'New Assessment', icon: <Plus size={14} />, onClick: () => setShowCreateModal(true) }} />
+      <PageHeader
+        title={mode === 'view' ? 'Assessment (View Score)' : 'Assessment (Input Score)'}
+        subtitle="Only CA and Terminal Exam are available."
+      />
 
       <div className="px-6 pb-8 space-y-4">
-        {/* CA vs Exam Tabs */}
         <div className="card animate-in">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: '#E4E1D8' }}>
-              {([
-                { id: 'all' as const, label: 'All Assessments' },
-                { id: 'CA' as const, label: 'Continuous Assessment (CA)' },
-                { id: 'Exam' as const, label: 'Terminal Examination' },
-              ]).map(tab => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                  className="px-4 py-2 text-sm font-medium transition-all"
-                  style={{
-                    background: activeTab === tab.id ? '#C9A020' : 'white',
-                    color: activeTab === tab.id ? 'white' : '#6B6660',
-                    borderLeft: tab.id !== 'all' ? '1px solid #E4E1D8' : 'none',
-                  }}>
-                  {tab.label}
+          <div className="flex flex-wrap gap-3 items-end">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Teacher</label>
+              <div className="input w-64 flex items-center" style={{ background: '#F7F6F3' }}>{user?.name ?? '—'}</div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Class</label>
+              <select
+                value={selectedGroupId}
+                onChange={e => {
+                  const id = e.target.value
+                  setSelectedGroupId(id)
+                  const g = groups.find((x: any) => x.id === id)
+                  setSelectedSubjectId(g?.subject_id ?? 0)
+                }}
+                className="select w-56"
+                disabled={groupsLoading || uniqueGroups.length === 0}
+              >
+                {groupsLoading && <option value="">Loading...</option>}
+                {!groupsLoading && uniqueGroups.length === 0 && <option value="">No assigned classes</option>}
+                {uniqueGroups.map((g: any) => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Subject</label>
+              <select
+                value={selectedSubjectId}
+                onChange={e => setSelectedSubjectId(Number(e.target.value))}
+                className="select w-56"
+                disabled={subjectsForSelectedGroup.length === 0}
+              >
+                {subjectsForSelectedGroup.map((g: any) => (
+                  <option key={g.subject_id} value={g.subject_id}>{g.subject}</option>
+                ))}
+                {subjectsForSelectedGroup.length === 0 && <option value={0}>—</option>}
+              </select>
+            </div>
+
+            <div className="ml-auto flex items-end gap-2">
+              <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: '#E4E1D8' }}>
+                {([{ id: 'CA' as const, label: 'CA' }, { id: 'Exam' as const, label: 'Terminal Exam' }]).map(t => (
+                  <button key={t.id} type="button" onClick={() => setActiveTab(t.id)}
+                    className="px-4 py-2 text-sm font-medium transition-all"
+                    style={{ background: activeTab === t.id ? '#C9A020' : 'white', color: activeTab === t.id ? 'white' : '#6B6660', borderLeft: t.id === 'Exam' ? '1px solid #E4E1D8' : 'none' }}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              {!viewOnly && (
+                <button type="button" className="btn-gold flex items-center gap-2"
+                  disabled={!selectedGroupId || saveMutation.isPending}
+                  onClick={() => saveMutation.mutate()}>
+                  <Save size={14} />
+                  {saveMutation.isPending ? 'Saving...' : saved ? 'Saved ✓' : 'Save'}
                 </button>
-              ))}
+              )}
             </div>
           </div>
 
-          {/* Weight Summary */}
-          {activeTab !== 'all' && (
-            <div className="p-3 rounded-lg mb-4" style={{ background: activeTab === 'CA' ? 'rgba(59,130,246,0.05)' : 'rgba(239,68,68,0.05)', border: `1px solid ${activeTab === 'CA' ? 'rgba(59,130,246,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
-              <div className="flex items-center gap-2 mb-2">
-                <Percent size={14} style={{ color: activeTab === 'CA' ? '#3B82F6' : '#EF4444' }} />
-                <span className="text-sm font-semibold" style={{ color: activeTab === 'CA' ? '#3B82F6' : '#EF4444' }}>
-                  {activeTab === 'CA' ? 'CA contributes 40% to final grade' : 'Exam contributes 60% to final grade'}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                {MOCK_GROUPS.map(g => {
-                  const summary = getWeightSummary(g.id)
-                  const currentWeight = activeTab === 'CA' ? summary.caWeight : summary.examWeight
-                  const maxWeight = activeTab === 'CA' ? 40 : 60
-                  return (
-                    <div key={g.id} className="text-center p-2 rounded-lg" style={{ background: 'white' }}>
-                      <p className="text-xs font-medium" style={{ color: '#6B6660' }}>{g.name}</p>
-                      <p className="text-sm font-bold" style={{ color: currentWeight > maxWeight ? '#EF4444' : '#1A1A1A' }}>
-                        {currentWeight}% / {maxWeight}%
-                      </p>
-                    </div>
-                  )
-                })}
-              </div>
+          {currentGroup && (
+            <div className="mt-4 text-xs" style={{ color: '#6B6660' }}>
+              {currentGroup.name} · CA max {caMax} · Exam max {examMax} · Total {totalMax}
             </div>
           )}
-
-          {/* Filters */}
-          <div className="flex flex-wrap gap-3">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Type</label>
-              <select value={filterType} onChange={e => setFilterType(e.target.value)} className="select w-40">
-                <option value="all">All Types</option>
-                {activeTab === 'CA' ? (
-                  <><option value="Quiz">Quiz</option><option value="Assignment">Assignment</option><option value="Lab">Lab</option><option value="CTA">CA Test</option></>
-                ) : activeTab === 'Exam' ? (
-                  <option value="Exam">Exam</option>
-                ) : (
-                  <><option value="Exam">Exam</option><option value="Quiz">Quiz</option><option value="Assignment">Assignment</option><option value="Lab">Lab</option><option value="CTA">CA Test</option></>
-                )}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Status</label>
-              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="select w-40">
-                <option value="all">All Status</option><option value="upcoming">Upcoming</option><option value="grading">Needs Grading</option><option value="completed">Completed</option>
-              </select>
-            </div>
-          </div>
         </div>
 
-        {!selectedAssessment ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 animate-in stagger-2">
-            {filtered.map(assessment => {
-              const sStyle = statusStyle[assessment.status]
-              return (
-                <div key={assessment.id} className="card-hover">
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className={`badge ${typeStyle[assessment.type]}`}>{assessment.type}</span>
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: sStyle.bg, color: sStyle.text }}>{assessment.status}</span>
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full ml-auto"
-                      style={{ background: assessment.category === 'CA' ? 'rgba(59,130,246,0.1)' : 'rgba(239,68,68,0.1)', color: assessment.category === 'CA' ? '#3B82F6' : '#EF4444' }}>
-                      {assessment.category}
-                    </span>
-                  </div>
-                  <h3 className="font-bold text-base mb-2">{assessment.title}</h3>
-                  <div className="space-y-1.5 mb-4">
-                    <div className="flex items-center gap-2 text-xs" style={{ color: '#6B6660' }}><Users size={12} /> {assessment.group} · {assessment.subject}</div>
-                    <div className="flex items-center gap-2 text-xs" style={{ color: '#6B6660' }}><Calendar size={12} /> {new Date(assessment.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
-                    <div className="flex items-center gap-2 text-xs" style={{ color: '#6B6660' }}><Award size={12} /> Max: {assessment.maxMarks} · Weight: {assessment.weight}%</div>
-                  </div>
-                  <div className="h-px mb-3" style={{ background: '#E4E1D8' }} />
-                  <button onClick={() => openGrading(assessment)} className="btn-gold text-xs w-full justify-center">
-                    <Edit2 size={12} /> {assessment.status === 'completed' ? 'View Grades' : 'Enter Grades'}
-                  </button>
-                </div>
-              )
-            })}
-            {filtered.length === 0 && (
-              <div className="col-span-full text-center py-12">
-                <p className="text-sm" style={{ color: '#6B6660' }}>No assessments found for the selected filters.</p>
+        {!groupsLoading && uniqueGroups.length === 0 && (
+          <div className="card animate-in">
+            <p className="text-sm" style={{ color: '#6B6660' }}>
+              No assigned classes found. Ask admin to assign subjects to you in Academics.
+            </p>
+          </div>
+        )}
+
+        {uniqueGroups.length > 0 && (
+          <div className="card animate-in">
+            {studentsLoading ? (
+              <p className="text-sm text-center py-8" style={{ color: '#6B6660' }}>Loading students...</p>
+            ) : (
+              <div className="rounded-xl overflow-hidden border" style={{ borderColor: '#E4E1D8' }}>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: 56 }}>#</th>
+                      <th>Student</th>
+                      {activeTab === 'CA' ? (
+                        <>
+                          {activeCaRows.map(r => <th key={r.id} style={{ width: 140 }}>{r.assessment} (/{r.max_score})</th>)}
+                          <th style={{ width: 120 }}>CA Total (/{caMax})</th>
+                        </>
+                      ) : (
+                        <th style={{ width: 160 }}>{activeExamRow.assessment} (/{examMax})</th>
+                      )}
+                      <th style={{ width: 120 }}>Total (/{totalMax})</th>
+                      <th style={{ width: 90 }}>%</th>
+                      {activeTab === 'Exam' && <th style={{ width: 90 }}>Grade</th>}
+                      <th style={{ width: 220 }}>Remark</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {studentRows.map((st, idx) => {
+                      const totals = computeTotals(st.id)
+                      return (
+                        <tr key={st.id}>
+                          <td className="font-mono text-sm" style={{ color: '#6B6660' }}>{idx + 1}</td>
+                          <td>
+                            <div className="flex items-center gap-2.5">
+                              <StudentAvatar initials={st.avatar} />
+                              <span className="font-medium">{st.name}</span>
+                            </div>
+                          </td>
+                          {activeTab === 'CA' ? (
+                            <>
+                              {activeCaRows.map(r => (
+                                <td key={r.id}>
+                                  {viewOnly ? (
+                                    <span style={{ color: '#6B6660' }}>{marksByStudent[st.id]?.ca?.[r.assessment] ?? '—'}</span>
+                                  ) : (
+                                    <input type="number" min={0} max={r.max_score}
+                                      value={marksByStudent[st.id]?.ca?.[r.assessment] ?? ''}
+                                      onChange={e => updateCa(st.id, r.assessment, e.target.value)}
+                                      className="input w-28 text-center" placeholder="—" />
+                                  )}
+                                </td>
+                              ))}
+                              <td className="font-bold">{totals.caTotal}</td>
+                            </>
+                          ) : (
+                            <td>
+                              {viewOnly ? (
+                                <span style={{ color: '#6B6660' }}>{marksByStudent[st.id]?.exam ?? '—'}</span>
+                              ) : (
+                                <input type="number" min={0} max={examMax}
+                                  value={marksByStudent[st.id]?.exam ?? ''}
+                                  onChange={e => updateExam(st.id, e.target.value)}
+                                  className="input w-28 text-center" placeholder="—" />
+                              )}
+                            </td>
+                          )}
+                          <td className="font-bold">{totals.total}</td>
+                          <td className="font-medium" style={{ color: '#6B6660' }}>
+                            {Number.isFinite(totals.pct) ? `${totals.pct}%` : '—'}
+                          </td>
+                          {activeTab === 'Exam' && <td className="font-bold">{totals.grade}</td>}
+                          <td>
+                            {viewOnly ? (
+                              <span style={{ color: '#6B6660' }}>{marksByStudent[st.id]?.remark || '—'}</span>
+                            ) : (
+                              <input type="text" value={marksByStudent[st.id]?.remark ?? ''}
+                                onChange={e => updateRemark(st.id, e.target.value)}
+                                className="input" placeholder="Write remark…" />
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                    {studentRows.length === 0 && !studentsLoading && (
+                      <tr>
+                        <td colSpan={activeTab === 'CA' ? 6 + activeCaRows.length : 6} style={{ padding: 20 }}>
+                          <p className="text-sm" style={{ color: '#6B6660' }}>No students in this class yet.</p>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
-        ) : (
-          <div className="card animate-in stagger-2">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <h2 className="font-bold text-lg">{selectedAssessment.title}</h2>
-                  <span className="text-xs font-medium px-2 py-0.5 rounded-full"
-                    style={{ background: selectedAssessment.category === 'CA' ? 'rgba(59,130,246,0.1)' : 'rgba(239,68,68,0.1)', color: selectedAssessment.category === 'CA' ? '#3B82F6' : '#EF4444' }}>
-                    {selectedAssessment.category === 'CA' ? 'Continuous Assessment' : 'Terminal Examination'}
-                  </span>
-                </div>
-                <p className="text-sm mt-0.5" style={{ color: '#6B6660' }}>{selectedAssessment.group} · {selectedAssessment.subject} · Max: {selectedAssessment.maxMarks} · Weight: {selectedAssessment.weight}%</p>
-              </div>
-              <button onClick={() => setSelectedAssessment(null)} className="btn-outline text-sm"><X size={14} /> Close</button>
-            </div>
+        )}
 
-            {/* Validation info */}
-            <div className="p-3 rounded-lg mb-4" style={{ background: '#F7F6F3', border: '1px solid #E4E1D8' }}>
-              <p className="text-xs" style={{ color: '#6B6660' }}>
-                ⚠️ Marks must be between 0 and {selectedAssessment.maxMarks}. Entries exceeding the maximum will be flagged.
-              </p>
-            </div>
-
-            <div className="rounded-lg overflow-hidden border" style={{ borderColor: '#E4E1D8' }}>
+        {uniqueGroups.length > 0 && (
+          <div className="card animate-in">
+            <h3 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: '#6B6660' }}>Grading Scale</h3>
+            <div className="rounded-xl overflow-hidden border" style={{ borderColor: '#E4E1D8' }}>
               <table className="table">
-                <thead><tr><th style={{ width: 50 }}>#</th><th>Student</th><th style={{ width: 120 }}>Marks (/{selectedAssessment.maxMarks})</th><th style={{ width: 80 }}>%</th><th>Remarks</th></tr></thead>
+                <thead><tr><th>Lower</th><th>Upper</th><th>Grade</th><th>Remark</th></tr></thead>
                 <tbody>
-                  {grades.map((student, idx) => {
-                    const pct = student.marks !== null ? Math.round((student.marks / selectedAssessment.maxMarks) * 100) : null
-                    const isOverMax = student.marks !== null && student.marks > selectedAssessment.maxMarks
-                    return (
-                      <tr key={student.student_id}>
-                        <td className="font-mono text-sm" style={{ color: '#6B6660' }}>{idx + 1}</td>
-                        <td><div className="flex items-center gap-2.5"><StudentAvatar initials={student.avatar} /><span className="font-medium">{student.name}</span></div></td>
-                        <td>
-                          <input type="number" min={0} max={selectedAssessment.maxMarks}
-                            value={student.marks ?? ''} onChange={e => updateGrade(student.student_id, 'marks', e.target.value === '' ? null : Number(e.target.value))}
-                            className="input w-20 text-center" placeholder="—"
-                            style={{ borderColor: isOverMax ? '#EF4444' : undefined }} />
-                        </td>
-                        <td>
-                          <span className="text-sm font-medium" style={{ color: pct !== null ? (pct >= 70 ? '#10B981' : pct >= 50 ? '#F59E0B' : '#EF4444') : '#6B6660' }}>
-                            {pct !== null ? `${pct}%` : '—'}
-                          </span>
-                        </td>
-                        <td><input type="text" value={student.remarks} onChange={e => updateGrade(student.student_id, 'remarks', e.target.value)} className="input" placeholder="Optional" /></td>
-                      </tr>
-                    )
-                  })}
+                  {DEFAULT_GRADES.slice().sort((a, b) => b.upper - a.upper).map(g => (
+                    <tr key={g.id}>
+                      <td style={{ color: '#6B6660' }}>{g.lower}</td>
+                      <td style={{ color: '#6B6660' }}>{g.upper}</td>
+                      <td className="font-semibold">{g.grade}</td>
+                      <td style={{ color: '#6B6660' }}>{g.remark}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
-            </div>
-
-            {/* Grade Summary */}
-            <div className="grid grid-cols-4 gap-3 mt-4 p-3 rounded-lg" style={{ background: '#F7F6F3' }}>
-              <div className="text-center">
-                <p className="text-xs" style={{ color: '#6B6660' }}>Graded</p>
-                <p className="font-bold">{grades.filter(g => g.marks !== null).length}/{grades.length}</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs" style={{ color: '#6B6660' }}>Average</p>
-                <p className="font-bold">{grades.filter(g => g.marks !== null).length > 0 ? Math.round(grades.filter(g => g.marks !== null).reduce((s, g) => s + (g.marks || 0), 0) / grades.filter(g => g.marks !== null).length) : '—'}</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs" style={{ color: '#6B6660' }}>Highest</p>
-                <p className="font-bold" style={{ color: '#10B981' }}>{grades.filter(g => g.marks !== null).length > 0 ? Math.max(...grades.filter(g => g.marks !== null).map(g => g.marks!)) : '—'}</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs" style={{ color: '#6B6660' }}>Lowest</p>
-                <p className="font-bold" style={{ color: '#EF4444' }}>{grades.filter(g => g.marks !== null).length > 0 ? Math.min(...grades.filter(g => g.marks !== null).map(g => g.marks!)) : '—'}</p>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 mt-4">
-              <button onClick={() => setSelectedAssessment(null)} className="btn-outline">Cancel</button>
-              <button onClick={() => setGradesSaved(true)} className="btn-gold"><Save size={14} /> {gradesSaved ? '✓ Saved' : 'Save Grades'}</button>
             </div>
           </div>
         )}
       </div>
-
-      {/* Create Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <div className="card w-full max-w-lg mx-4 animate-in">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="font-bold text-lg">Create Assessment</h2>
-              <button onClick={() => setShowCreateModal(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-gray-100"><X size={18} /></button>
-            </div>
-            <div className="space-y-4">
-              {/* Category Selection */}
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Category</label>
-                <div className="flex gap-2">
-                  <button onClick={() => setForm(f => ({ ...f, category: 'CA', type: 'Quiz' }))}
-                    className="flex-1 py-2.5 rounded-lg text-sm font-medium transition-all"
-                    style={{ background: form.category === 'CA' ? 'rgba(59,130,246,0.1)' : '#F7F6F3', color: form.category === 'CA' ? '#3B82F6' : '#6B6660', border: `1px solid ${form.category === 'CA' ? '#3B82F6' : '#E4E1D8'}` }}>
-                    Continuous Assessment (40%)
-                  </button>
-                  <button onClick={() => setForm(f => ({ ...f, category: 'Exam', type: 'Exam', weight: 60 }))}
-                    className="flex-1 py-2.5 rounded-lg text-sm font-medium transition-all"
-                    style={{ background: form.category === 'Exam' ? 'rgba(239,68,68,0.1)' : '#F7F6F3', color: form.category === 'Exam' ? '#EF4444' : '#6B6660', border: `1px solid ${form.category === 'Exam' ? '#EF4444' : '#E4E1D8'}` }}>
-                    Terminal Examination (60%)
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Title</label>
-                <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="input" placeholder={form.category === 'CA' ? 'e.g. Weekly Quiz #9' : 'e.g. End of Term Exam'} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Type</label>
-                  <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value as Assessment['type'] }))} className="select">
-                    {form.category === 'CA' ? (
-                      <><option value="Quiz">Quiz</option><option value="Assignment">Assignment</option><option value="Lab">Lab</option><option value="CTA">CA Test</option></>
-                    ) : (
-                      <option value="Exam">Exam</option>
-                    )}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Max Marks</label>
-                  <input type="number" value={form.maxMarks} onChange={e => setForm(f => ({ ...f, maxMarks: Number(e.target.value) }))} className="input" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Weight (%)</label>
-                  <input type="number" min={1} max={form.category === 'CA' ? 40 : 60} value={form.weight} onChange={e => setForm(f => ({ ...f, weight: Number(e.target.value) }))} className="input" />
-                  <p className="text-[10px] mt-1" style={{ color: '#6B6660' }}>Max: {form.category === 'CA' ? '40' : '60'}% for {form.category}</p>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Date</label>
-                  <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className="input" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Class / Group</label>
-                  <select value={form.group_id} onChange={e => { const g = MOCK_GROUPS.find(x => x.id === e.target.value); setForm(f => ({ ...f, group_id: e.target.value, group: g?.name || '' })) }} className="select">
-                    {MOCK_GROUPS.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: '#6B6660' }}>Subject</label>
-                  <select value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} className="select">
-                    <option>Advanced Physics</option><option>Physics Fundamentals</option><option>Physics Lab</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div className="flex justify-end gap-3 mt-6">
-              <button onClick={() => setShowCreateModal(false)} className="btn-outline">Cancel</button>
-              <button onClick={handleCreate} className="btn-gold" disabled={!form.title || !form.date}><Plus size={14} /> Create</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

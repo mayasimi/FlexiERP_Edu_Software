@@ -16,25 +16,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/login/page.js"
     ],
-    "/dashboard/page": [
+    "/portal/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/page.js"
+      "static/chunks/app/portal/page.js"
     ],
-    "/dashboard/layout": [
+    "/portal/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/dashboard/layout.js"
-    ],
-    "/staff/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/staff/page.js"
-    ],
-    "/admin/payroll/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/admin/payroll/page.js"
+      "static/chunks/app/portal/layout.js"
     ],
     "/instructor-dashboard/page": [
       "static/chunks/webpack.js",
@@ -46,20 +36,65 @@
       "static/chunks/main-app.js",
       "static/chunks/app/instructor-dashboard/layout.js"
     ],
+    "/dashboard/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/page.js"
+    ],
+    "/dashboard/layout": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/layout.js"
+    ],
     "/attendance/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/attendance/page.js"
     ],
-    "/portal/page": [
+    "/settings/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/portal/page.js"
+      "static/chunks/app/settings/page.js"
     ],
-    "/portal/layout": [
+    "/results/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/portal/layout.js"
+      "static/chunks/app/results/page.js"
+    ],
+    "/timetable/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/timetable/page.js"
+    ],
+    "/inventory/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/inventory/page.js"
+    ],
+    "/students/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/students/page.js"
+    ],
+    "/application/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/application/page.js"
+    ],
+    "/application/form/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/application/form/page.js"
+    ],
+    "/admission/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/admission/page.js"
+    ],
+    "/staff/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/staff/page.js"
     ]
   }
 }

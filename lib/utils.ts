@@ -5,6 +5,20 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export const DEFAULT_CLASS_LEVELS = [
+  'JSS 1', 'JSS 2', 'JSS 3',
+  'SSS 1', 'SSS 2', 'SSS 3',
+]
+
+export function getClassLevelsFromDirectory(defaults: string[]): string[] {
+  return defaults
+}
+
+export function getSectionFromName(name: string): string {
+  const parts = name.trim().split(' ')
+  return parts.length > 2 ? parts.slice(2).join(' ') : name
+}
+
 export function formatCurrency(amount: number, currency = 'USD') {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount)
 }
