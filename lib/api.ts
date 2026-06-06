@@ -47,61 +47,84 @@ export default api
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTH  →  Laravel: routes/api.php  POST /api/auth/*
 // ─────────────────────────────────────────────────────────────────────────────
-export const authApi = {
-  login: (email: string, password: string) =>
-    api.post('/auth/login', { email, password }),
-  logout: () => api.post('/auth/logout'),
-  me: () => api.get('/auth/me'),
-  forgotPassword: (email: string) => api.post('/auth/forgot-password', { email }),
-  resetPassword: (data: { token: string; email: string; password: string }) =>
-    api.post('/auth/reset-password', data),
-}
+  export const authApi = {
+    login: (email: string, password: string) =>
+      api.post('/auth/login', { email, password }),
+    logout: () => api.post('/auth/logout'),
+    me: () => api.get('/auth/me'),
+    forgotPassword: (email: string) => api.post('/auth/forgot-password', { email }),
+    resetPassword: (data: { token: string; email: string; password: string }) =>
+      api.post('/auth/reset-password', data),
+  }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DASHBOARD  →  Laravel: App\Http\Controllers\DashboardController
-// ─────────────────────────────────────────────────────────────────────────────
-export const dashboardApi = {
-  getOverview: () => api.get('/dashboard/overview'),
-  getRecentActivities: (limit = 10) => api.get(`/dashboard/activities?limit=${limit}`),
-  getQuickStats: () => api.get('/dashboard/stats'),
-}
+  // ─────────────────────────────────────────────────────────────────────────────
+  // DASHBOARD  →  Laravel: App\Http\Controllers\DashboardController
+  // ─────────────────────────────────────────────────────────────────────────────
+  export const dashboardApi = {
+    getOverview: () => api.get('/dashboard/overview'),
+    getRecentActivities: (limit = 10) => api.get(`/dashboard/activities?limit=${limit}`),
+    getQuickStats: () => api.get('/dashboard/stats'),
+  }
 
-//PAYROLL
-export const payrollApi = {
-  getMyPayslips: () => api.get('/payroll/my-payslips'),
-}
+  //PAYROLL
+  export const payrollApi = {
+    getMyPayslips: () => api.get('/payroll/my-payslips'),
+  }
 
-// STAFF
-export const staffApi = {
-  list: (params?: {
-    search?: string; department?: string; status?: string
-    page?: number; per_page?: number
-  }) => api.get('/staff', { params }),
+  // STAFF
+  export const staffApi = {
+    list: (params?: {
+      search?: string; department?: string; status?: string
+      page?: number; per_page?: number
+    }) => api.get('/staff', { params }),
 
-  show: (id: string) =>
-    api.get(`/staff/${id}`),
+    show: (id: string) =>
+      api.get(`/staff/${id}`),
 
-  create: (formData: FormData) =>
-    api.post('/staff', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }),
+    create: (formData: FormData) =>
+      api.post('/staff', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }),
 
-  update: (id: string, formData: FormData) =>
-    api.post(`/staff/${id}`, formData, {          // POST with _method=PUT for file upload
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }),
+    update: (id: string, formData: FormData) =>
+      api.post(`/staff/${id}`, formData, {          // POST with _method=PUT for file upload
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }),
 
-  destroy: (id: string) =>
-    api.delete(`/staff/${id}`),
-}
+    destroy: (id: string) =>
+      api.delete(`/staff/${id}`),
+  }
 
-// ACADEMICS
-export const academicsApi = {
-  getClasses: () => api.get('/academics/classes'),
-  // section_id is the numeric ID returned from getClasses
-  getSubjects: (classId: string, sectionId: string) =>
-    api.get('/academics/subjects', { params: { class_id: classId, section_id: sectionId } }),
-}
+  // ACADEMICS
+  export const academicsApi = {
+    getClasses: () =>
+      api.get('/academics/classes'),
+
+    getSubjects: (sectionId: string) =>
+      api.get('/academics/subjects', { params: { section_id: sectionId } }),
+
+    allSubjects: () =>
+      api.get('/academics/all-subjects'),
+
+    createSubject: (data: {
+      code: string; name: string; type: string
+      max_theory?: number; max_practical?: number
+      class_section_id: string; staff_id?: string | number
+      academic_term?: string
+    }) => api.post('/academics/subjects', data),
+
+    updateSubject: (assignmentId: number, data: {
+      name?: string; type?: string
+      max_theory?: number; max_practical?: number
+      staff_id?: string | number; academic_term?: string
+    }) => api.put(`/academics/subjects/${assignmentId}`, data),
+
+    deleteSubject: (assignmentId: number) =>
+      api.delete(`/academics/subjects/${assignmentId}`),
+
+    getStaff: () =>
+      api.get('/academics/staff'),
+  }
 
   // ADMISSIONS
   export const admissionApi = {

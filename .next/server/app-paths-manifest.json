@@ -1,6 +1,5 @@
 {
-  "/staff/page": "app/staff/page.js",
-  "/settings/page": "app/settings/page.js",
-  "/inventory/page": "app/inventory/page.js",
-  "/students/page": "app/students/page.js"
+  "/login/page": "app/login/page.js",
+  "/academics/page": "app/academics/page.js",
+  "/dashboard/page": "app/dashboard/page.js"
 }
