@@ -1,50 +1,86 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import {
   LayoutDashboard, ClipboardCheck, CalendarDays, FileText,
-  Users, BarChart3, LogOut, BookOpen, MessageCircle, WalletCards
+  Users, BarChart3, LogOut, BookOpen, MessageCircle,
+  ClipboardList, Wallet,
 } from 'lucide-react'
 import { useAuthStoreMounted } from '@/lib/auth-store'
 import type { Section } from './_types'
-import DashboardSection    from './_sections/DashboardSection'
-import AttendanceSection   from './_sections/AttendanceSection'
-import ScheduleSection     from './_sections/ScheduleSection'
-import AssessmentSection   from './_sections/AssessmentSection'
-import GroupsSection       from './_sections/GroupsSection'
-import PerformanceSection  from './_sections/PerformanceSection'
-import LessonPlanSection   from './_sections/LessonPlanSection'
-import MessagesSection     from './_sections/MessagesSection'
-import PayrollSection      from './_sections/PayrollSection'
+import DashboardSection          from './_sections/DashboardSection'
+import AttendanceSection         from './_sections/AttendanceSection'
+import ScheduleSection           from './_sections/ScheduleSection'
+import AssessmentSection         from './_sections/AssessmentSection'
+import GroupsSection             from './_sections/GroupsSection'
+import PerformanceSection        from './_sections/PerformanceSection'
+import LessonPlanSection         from './_sections/LessonPlanSection'
+import MessagesSection           from './_sections/MessagesSection'
+import TeacherAssignmentsSection from './_sections/TeacherAssignmentsSection'
+import PayrollSection            from './_sections/PayrollSection'
 import Navbar from '@/components/layout/Navbar'
 
+// ── Sidebar item definitions ───────────────────────────────────────────────
 const sidebarItems: { id: Section; label: string; icon: typeof LayoutDashboard }[] = [
-  { id: 'dashboard',    label: 'Dashboard',       icon: LayoutDashboard },
-  { id: 'attendance',   label: 'Attendance',       icon: ClipboardCheck  },
-  { id: 'schedule',     label: 'My Schedule',      icon: CalendarDays    },
-  { id: 'assessment',   label: 'Assessment',       icon: FileText        },
-  { id: 'lesson-plans', label: 'Lesson Plans',     icon: BookOpen        },
-  { id: 'groups',       label: 'Student Groups',   icon: Users           },
-  { id: 'performance',  label: 'Class Performance',icon: BarChart3       },
-  { id: 'messages',     label: 'Messages',         icon: MessageCircle   },
-  { id: 'payroll',      label: 'My Payroll',       icon: WalletCards     },
+  { id: 'dashboard',    label: 'Dashboard',        icon: LayoutDashboard },
+  { id: 'attendance',   label: 'Attendance',        icon: ClipboardCheck  },
+  { id: 'schedule',     label: 'My Schedule',       icon: CalendarDays    },
+  { id: 'lesson-plans', label: 'Lesson Plans',      icon: BookOpen        },
+  { id: 'assignments',  label: 'Assignments',       icon: ClipboardList   },
+  { id: 'groups',       label: 'Student Groups',    icon: Users           },
+  { id: 'performance',  label: 'Class Performance', icon: BarChart3       },
+  { id: 'messages',     label: 'Messages',          icon: MessageCircle   },
+  { id: 'payroll',      label: 'My Payroll',        icon: Wallet          },
 ]
 
+// NavButton helper — avoids repeating hover inline style logic
+function NavBtn({
+  id, label, icon: Icon, active, onClick,
+}: {
+  id: string; label: string; icon: typeof LayoutDashboard; active: boolean; onClick: () => void
+}) {
+  return (
+    <button
+      key={id}
+      onClick={onClick}
+      className="flex items-center gap-3 w-full px-4 py-3 mx-2 rounded-lg text-sm transition-all text-left"
+      onMouseEnter={e => {
+        e.currentTarget.style.color = '#C9A020'
+        if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.color      = active ? '#C9A020' : '#FFFFFF'
+        e.currentTarget.style.background = active ? 'rgba(201,160,32,0.15)' : 'transparent'
+      }}
+      style={{
+        width:      'calc(100% - 16px)',
+        color:      active ? '#C9A020' : '#FFFFFF',
+        background: active ? 'rgba(201,160,32,0.15)' : 'transparent',
+        border:     active ? '1px solid rgba(201,160,32,0.30)' : '1px solid transparent',
+      }}
+    >
+      <Icon size={16} />
+      <span>{label}</span>
+    </button>
+  )
+}
+
 export default function InstructorDashboardPage() {
-  const [activeSection, setActiveSection] = useState<Section>('dashboard')
+  const [activeSection,  setActiveSection]  = useState<Section>('dashboard')
   const [assessmentOpen, setAssessmentOpen] = useState(false)
   const { user, logout, mounted } = useAuthStoreMounted()
-  const isAssessmentActive = activeSection === 'assessment' || activeSection === 'assessment-input' || activeSection === 'assessment-view'
 
-  // Real name and initials from the authenticated teacher
+  // Assessment is "active" if any of its sub-sections are selected
+  const isAssessmentActive = activeSection === 'assessment'
+    || activeSection === 'assessment-input'
+    || activeSection === 'assessment-view'
+
+  // Real name + initials from authenticated teacher
   const displayName = (mounted ? user?.name : null) || 'Teacher'
   const initials    = displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
 
-  useEffect(() => {
-    setTermLabel(getActiveTermLabel(''))
-  }, [])
-
+  // Auto-open assessment dropdown when an assessment sub-section is active
   useEffect(() => {
     if (isAssessmentActive) setAssessmentOpen(true)
   }, [isAssessmentActive])
@@ -52,7 +88,7 @@ export default function InstructorDashboardPage() {
   return (
     <div className="flex min-h-screen" style={{ background: '#F7F6F3' }}>
 
-      {/* ── Instructor Sidebar ── */}
+      {/* ── Instructor Sidebar ─────────────────────────────────────────── */}
       <aside
         className="fixed left-0 top-0 h-screen flex flex-col z-50"
         style={{ width: 240, background: '#0D0D0D', borderRight: '1px solid #2A2A2A' }}
@@ -66,7 +102,7 @@ export default function InstructorDashboardPage() {
           />
         </div>
 
-        {/* Term Badge */}
+        {/* Term badge */}
         <div className="px-4 py-2.5">
           <div className="rounded-lg px-3 py-2 text-xs font-medium"
             style={{ background: 'rgba(201,160,32,0.10)', color: '#C9A020', border: '1px solid rgba(201,160,32,0.2)' }}>
@@ -76,164 +112,104 @@ export default function InstructorDashboardPage() {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto py-2 space-y-0.5">
-          {sidebarItems.slice(0, 3).map(({ id, label, icon: Icon }) => {
-            const active = activeSection === id
-            return (
-              <button key={id} onClick={() => setActiveSection(id)}
-                className="flex items-center gap-3 w-full px-4 py-3 mx-2 rounded-lg text-sm transition-all text-left"
-                onMouseEnter={(event) => {
-                  event.currentTarget.style.color = '#C9A020'
-                  if (!active) {
-                    event.currentTarget.style.background = 'rgba(255,255,255,0.08)'
-                  }
-                }}
-                onMouseLeave={(event) => {
-                  event.currentTarget.style.color = active ? '#C9A020' : '#FFFFFF'
-                  event.currentTarget.style.background = active ? 'rgba(201,160,32,0.15)' : 'transparent'
-                }}
-                style={{
-                  width: 'calc(100% - 16px)',
-                  color: active ? '#C9A020' : '#FFFFFF',
-                  background: active ? 'rgba(201,160,32,0.15)' : 'transparent',
-                  border: active ? '1px solid rgba(201,160,32,0.30)' : '1px solid transparent',
-                }}>
-                <Icon size={16} />
-                <span>{label}</span>
-              </button>
-            )
-          })}
 
-          {/* Assessment dropdown */}
+          {/* Dashboard, Attendance, Schedule */}
+          {sidebarItems.slice(0, 3).map(({ id, label, icon }) => (
+            <NavBtn key={id} id={id} label={label} icon={icon}
+              active={activeSection === id}
+              onClick={() => setActiveSection(id as Section)} />
+          ))}
+
+          {/* Assessment — expandable with sub-items ─────────────────────── */}
           <div className="mx-2">
             <button
               type="button"
-              onClick={() => setAssessmentOpen((v) => !v)}
+              onClick={() => setAssessmentOpen(v => !v)}
               className="flex items-center gap-3 w-full px-4 py-3 rounded-lg text-sm transition-all text-left"
-              onMouseEnter={(event) => {
-                event.currentTarget.style.color = '#C9A020'
-                if (!isAssessmentActive) {
-                  event.currentTarget.style.background = 'rgba(255,255,255,0.08)'
-                }
+              onMouseEnter={e => {
+                e.currentTarget.style.color = '#C9A020'
+                if (!isAssessmentActive) e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
               }}
-              onMouseLeave={(event) => {
-                event.currentTarget.style.color = isAssessmentActive ? '#C9A020' : '#FFFFFF'
-                event.currentTarget.style.background = isAssessmentActive ? 'rgba(201,160,32,0.15)' : 'transparent'
+              onMouseLeave={e => {
+                e.currentTarget.style.color      = isAssessmentActive ? '#C9A020' : '#FFFFFF'
+                e.currentTarget.style.background = isAssessmentActive ? 'rgba(201,160,32,0.15)' : 'transparent'
               }}
               style={{
-                width: 'calc(100% - 0px)',
-                color: isAssessmentActive ? '#C9A020' : '#FFFFFF',
+                width:      'calc(100% - 0px)',
+                color:      isAssessmentActive ? '#C9A020' : '#FFFFFF',
                 background: isAssessmentActive ? 'rgba(201,160,32,0.15)' : 'transparent',
-                border: isAssessmentActive ? '1px solid rgba(201,160,32,0.30)' : '1px solid transparent',
+                border:     isAssessmentActive ? '1px solid rgba(201,160,32,0.30)' : '1px solid transparent',
               }}
             >
-              <span className="flex items-center gap-3">
-                <FileText size={16} />
-                <span>Assessment</span>
-              </span>
-              <span className="ml-auto" style={{ transform: assessmentOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease', opacity: 0.8 }}>
+              <FileText size={16} />
+              <span>Assessment</span>
+              <span className="ml-auto"
+                style={{ transform: assessmentOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', opacity: 0.7 }}>
                 ▶
               </span>
             </button>
 
-            {assessmentOpen ? (
+            {assessmentOpen && (
               <div className="mt-1 space-y-0.5">
-                {[
-                  { id: 'assessment-input' as const, label: 'Input Score' },
-                  { id: 'assessment-view' as const, label: 'View Score' },
-                ].map((item) => {
+                {([
+                  { id: 'assessment-input' as Section, label: 'Input Score' },
+                  { id: 'assessment-view'  as Section, label: 'View Score'  },
+                ]).map(item => {
                   const active = activeSection === item.id
                   return (
-                    <button
-                      key={item.id}
-                      type="button"
+                    <button key={item.id} type="button"
                       onClick={() => setActiveSection(item.id)}
                       className="flex items-center gap-3 w-full px-4 py-2.5 rounded-lg text-sm transition-all text-left"
-                      onMouseEnter={(event) => {
-                        event.currentTarget.style.color = '#C9A020'
-                        if (!active) {
-                          event.currentTarget.style.background = 'rgba(255,255,255,0.08)'
-                        }
+                      onMouseEnter={e => {
+                        e.currentTarget.style.color = '#C9A020'
+                        if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
                       }}
-                      onMouseLeave={(event) => {
-                        event.currentTarget.style.color = active ? '#C9A020' : '#FFFFFF'
-                        event.currentTarget.style.background = active ? 'rgba(201,160,32,0.15)' : 'transparent'
+                      onMouseLeave={e => {
+                        e.currentTarget.style.color      = active ? '#C9A020' : '#FFFFFF'
+                        e.currentTarget.style.background = active ? 'rgba(201,160,32,0.15)' : 'transparent'
                       }}
                       style={{
                         marginLeft: 12,
-                        width: 'calc(100% - 12px)',
-                        color: active ? '#C9A020' : '#FFFFFF',
+                        width:      'calc(100% - 12px)',
+                        color:      active ? '#C9A020' : '#FFFFFF',
                         background: active ? 'rgba(201,160,32,0.15)' : 'transparent',
-                        border: active ? '1px solid rgba(201,160,32,0.30)' : '1px solid transparent',
-                        opacity: 0.95,
+                        border:     active ? '1px solid rgba(201,160,32,0.30)' : '1px solid transparent',
                       }}
                     >
-                      <span style={{ width: 6, height: 6, borderRadius: 999, background: active ? '#C9A020' : 'rgba(255,255,255,0.35)' }} />
+                      <span style={{ width: 6, height: 6, borderRadius: 999, background: active ? '#C9A020' : 'rgba(255,255,255,0.35)', flexShrink: 0 }} />
                       <span>{item.label}</span>
                     </button>
                   )
                 })}
               </div>
-            ) : null}
+            )}
           </div>
 
-          {sidebarItems.slice(3).map(({ id, label, icon: Icon }) => {
-            const active = activeSection === id
-            return (
-              <button
-                key={id}
-                onClick={() => setActiveSection(id)}
-                className="flex items-center gap-3 w-full px-4 py-3 mx-2 rounded-lg text-sm transition-all text-left"
-                onMouseEnter={e => {
-                  e.currentTarget.style.color = '#C9A020'
-                  if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.color   = active ? '#C9A020' : '#FFFFFF'
-                  e.currentTarget.style.background = active ? 'rgba(201,160,32,0.15)' : 'transparent'
-                }}
-                style={{
-                  width: 'calc(100% - 16px)',
-                  color:      active ? '#C9A020' : '#FFFFFF',
-                  background: active ? 'rgba(201,160,32,0.15)' : 'transparent',
-                  border:     active ? '1px solid rgba(201,160,32,0.30)' : '1px solid transparent',
-                }}
-              >
-                <Icon size={16} />
-                <span>{label}</span>
-              </button>
-            )
-          })}
+          {/* Lesson Plans, Assignments, Groups, Performance, Messages, Payroll */}
+          {sidebarItems.slice(3).map(({ id, label, icon }) => (
+            <NavBtn key={id} id={id} label={label} icon={icon}
+              active={activeSection === id}
+              onClick={() => setActiveSection(id as Section)} />
+          ))}
         </nav>
 
-        {/* ── User info + Logout ── */}
-        <div className="p-3" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}> 
-          {/* User info */}
+        {/* User info + Logout ──────────────────────────────────────────── */}
+        <div className="p-3" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
           <div className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm"
             style={{ color: 'rgba(255,255,255,0.70)' }}>
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-              style={{ background: 'rgba(201,160,32,0.3)', color: '#C9A020' }}
-            >
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+              style={{ background: 'rgba(201,160,32,0.3)', color: '#C9A020' }}>
               {initials}
             </div>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {displayName}
             </span>
-          </div> 
+          </div>
 
-          {/* Logout */}
-          <button
-            type="button"
-            onClick={() => logout()}
+          <button type="button" onClick={() => logout()}
             className="flex items-center gap-3 w-full px-4 py-2 rounded-lg text-sm transition-all"
-            onMouseEnter={e => {
-              e.currentTarget.style.color      = '#EF4444'
-              e.currentTarget.style.background = 'rgba(239,68,68,0.08)'
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.color      = 'rgba(255,255,255,0.50)'
-              e.currentTarget.style.background = 'transparent'
-            }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#EF4444'; e.currentTarget.style.background = 'rgba(239,68,68,0.08)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.50)'; e.currentTarget.style.background = 'transparent' }}
             style={{ color: 'rgba(255,255,255,0.50)', background: 'transparent', border: 'none', fontFamily: 'inherit', cursor: 'pointer' }}
           >
             <LogOut size={16} />
@@ -242,20 +218,23 @@ export default function InstructorDashboardPage() {
         </div>
       </aside>
 
-      {/* ── Main Content ── */}
+      {/* ── Main content ──────────────────────────────────────────────────── */}
       <div className="flex-1" style={{ marginLeft: 240 }}>
         <Navbar settingsHref="/instructor-dashboard/settings" />
-        {activeSection === 'dashboard'    && <DashboardSection   onNavigate={setActiveSection} />}
-        {activeSection === 'attendance'   && <AttendanceSection  />}
-        {activeSection === 'schedule'     && <ScheduleSection    />}
-        {activeSection === 'assessment'   && <AssessmentSection  />}
-        {activeSection === 'assessment-input' && <AssessmentSection mode="input" />}
-        {activeSection === 'assessment-view' && <AssessmentSection mode="view" />}
-        {activeSection === 'lesson-plans' && <LessonPlanSection  />}
-        {activeSection === 'groups'       && <GroupsSection      />}
-        {activeSection === 'performance'  && <PerformanceSection />}
-        {activeSection === 'messages'     && <MessagesSection    />}
-        {activeSection === 'payroll'      && <PayrollSection     />}
+
+        {activeSection === 'dashboard'        && <DashboardSection   onNavigate={setActiveSection} />}
+        {activeSection === 'attendance'        && <AttendanceSection  />}
+        {activeSection === 'schedule'          && <ScheduleSection    />}
+        {/* Assessment sub-sections — both use the same component with different mode prop */}
+        {activeSection === 'assessment'        && <AssessmentSection mode="input" />}
+        {activeSection === 'assessment-input'  && <AssessmentSection mode="input" />}
+        {activeSection === 'assessment-view'   && <AssessmentSection mode="view"  />}
+        {activeSection === 'lesson-plans'      && <LessonPlanSection  />}
+        {activeSection === 'assignments'       && <TeacherAssignmentsSection />}
+        {activeSection === 'groups'            && <GroupsSection      />}
+        {activeSection === 'performance'       && <PerformanceSection />}
+        {activeSection === 'messages'          && <MessagesSection    />}
+        {activeSection === 'payroll'           && <PayrollSection     />}
       </div>
     </div>
   )

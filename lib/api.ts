@@ -47,53 +47,115 @@ export default api
 // ─────────────────────────────────────────────────────────────────────────────
 // AUTH  →  Laravel: routes/api.php  POST /api/auth/*
 // ─────────────────────────────────────────────────────────────────────────────
-export const authApi = {
-  login: (email: string, password: string) =>
-    api.post('/auth/login', { email, password }),
-  logout: () => api.post('/auth/logout'),
-  me: () => api.get('/auth/me'),
-  forgotPassword: (email: string) => api.post('/auth/forgot-password', { email }),
-  resetPassword: (data: { token: string; email: string; password: string }) =>
-    api.post('/auth/reset-password', data),
-}
+  export const authApi = {
+    login: (email: string, password: string) =>
+      api.post('/auth/login', { email, password }),
+    logout: () => api.post('/auth/logout'),
+    me: () => api.get('/auth/me'),
+    forgotPassword: (email: string) => api.post('/auth/forgot-password', { email }),
+    resetPassword: (data: { token: string; email: string; password: string }) =>
+      api.post('/auth/reset-password', data),
+  }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DASHBOARD  →  Laravel: App\Http\Controllers\DashboardController
-// ─────────────────────────────────────────────────────────────────────────────
-export const dashboardApi = {
-  getOverview: () => api.get('/dashboard/overview'),
-  getRecentActivities: (limit = 10) => api.get(`/dashboard/activities?limit=${limit}`),
-  getQuickStats: () => api.get('/dashboard/stats'),
-}
+  // ─────────────────────────────────────────────────────────────────────────────
+  // DASHBOARD  →  Laravel: App\Http\Controllers\DashboardController
+  // ─────────────────────────────────────────────────────────────────────────────
+  export const dashboardApi = {
+    getOverview: () => api.get('/dashboard/overview'),
+    getRecentActivities: (limit = 10) => api.get(`/dashboard/activities?limit=${limit}`),
+    getQuickStats: () => api.get('/dashboard/stats'),
+  }
 
-//PAYROLL
-export const payrollApi = {
-  getMyPayslips: () => api.get('/payroll/my-payslips'),
-}
+  //PAYROLL
+  export const payrollApi = {
+    getMyPayslips: () => api.get('/payroll/my-payslips'),
+  }
 
-// STAFF
-export const staffApi = {
-  list: (params: { page?: number; search?: string; department?: string; role?: string; status?: string; per_page?: number }) =>
-    api.get('/staff', { params }),
-  show: (id: number) => api.get(`/staff/${id}`),
-}
+  // STAFF
+  export const staffApi = {
+    list: (params?: {
+      search?: string; department?: string; status?: string
+      page?: number; per_page?: number
+    }) => api.get('/staff', { params }),
 
-// ACADEMICS
-export const academicsApi = {
-  getClasses: () => api.get('/academics/classes'),
-  // section_id is the numeric ID returned from getClasses
-  getSubjects: (classId: string, sectionId: string) =>
-    api.get('/academics/subjects', { params: { class_id: classId, section_id: sectionId } }),
-}
+    show: (id: string) =>
+      api.get(`/staff/${id}`),
 
-// ADMISSIONS
-export const admissionApi = {
-  list: (params: {
-    status?: string; date_from?: string; date_to?: string;
-    program?: string; page?: number; per_page?: number;
-  }) => api.get('/admissions', { params }),
-  create: (data: { first_name: string; last_name: string; program: string; date_applied: string; email?: string; phone?: string }) =>
-    api.post('/admissions', data),
+    create: (formData: FormData) =>
+      api.post('/staff', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }),
+
+    update: (id: string, formData: FormData) =>
+      api.post(`/staff/${id}`, formData, {          // POST with _method=PUT for file upload
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }),
+
+    destroy: (id: string) =>
+      api.delete(`/staff/${id}`),
+  }
+
+  // ACADEMICS
+  export const academicsApi = {
+    getClasses: () =>
+      api.get('/academics/classes'),
+
+    getSubjects: (sectionId: string) =>
+      api.get('/academics/subjects', { params: { section_id: sectionId } }),
+
+    allSubjects: () =>
+      api.get('/academics/all-subjects'),
+
+    createSubject: (data: {
+      code: string; name: string; type: string
+      max_theory?: number; max_practical?: number
+      class_section_id: string; staff_id?: string | number
+      academic_term?: string
+    }) => api.post('/academics/subjects', data),
+
+    updateSubject: (assignmentId: number, data: {
+      name?: string; type?: string
+      max_theory?: number; max_practical?: number
+      staff_id?: string | number; academic_term?: string
+    }) => api.put(`/academics/subjects/${assignmentId}`, data),
+
+    deleteSubject: (assignmentId: number) =>
+      api.delete(`/academics/subjects/${assignmentId}`),
+
+    getStaff: () =>
+      api.get('/academics/staff'),
+  }
+
+  // ADMISSIONS
+  export const admissionApi = {
+    // GET /api/admissions — list with filters
+    list: (params: {
+      status?:    string
+      search?:    string
+      date_from?: string
+      date_to?:   string
+      program?:   string
+      page?:      number
+      per_page?:  number
+    }) => api.get('/admissions', { params }),
+
+    // GET /api/admissions/:id — full detail
+    show: (applicationNo: string) =>
+      api.get(`/admissions/${applicationNo}`),
+
+    // POST /api/admissions — submit application (no auth, public)
+    store: (formData: FormData) =>
+      api.post('/admissions', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }),
+
+    // PATCH /api/admissions/:id/status — update status (admitted/rejected/etc)
+    updateStatus: (applicationNo: string, data: { status: string; notes?: string }) =>
+      api.patch(`/admissions/${applicationNo}/status`, data),
+
+    // DELETE /api/admissions/:id
+    destroy: (applicationNo: string) =>
+      api.delete(`/admissions/${applicationNo}`),
 }
 
 // ATTENDANCE
@@ -132,24 +194,36 @@ export const timetableApi = {
 // STUDENTS  →  Laravel: App\Http\Controllers\StudentController
 // ─────────────────────────────────────────────────────────────────────────────
 export const studentApi = {
+  list: (params?: {
+    search?: string; grade?: string; status?: string
+    page?: number; per_page?: number
+  }) => api.get('/students', { params }),
 
-  list: (params: {
-      page?: number
-      search?: string
-      grade?: string
-      status?: string
-      per_page?: number
-    }) => api.get('/students', { params }),
+  show: (id: string) =>
+    api.get(`/students/${id}`),
 
-    show: (studentId: string) =>
-      api.get(`/students/${studentId}`),
+  create: (formData: FormData) =>
+    api.post('/students', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
 
-  create: (data: FormData) =>
-    api.post('/students', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  update: (id: string, data: FormData) =>
-    api.post(`/students/${id}?_method=PUT`, data, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  delete: (id: string) => api.delete(`/students/${id}`),
+  update: (id: string, formData: FormData) =>
+    api.post(`/students/${id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+
+  destroy: (id: string) =>
+    api.delete(`/students/${id}`),
+
+  bulkImport: (formData: FormData) =>
+    api.post('/students/bulk-import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+
+  classSections: () =>
+    api.get('/students/class-sections'),
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RESULTS / EXAMINATIONS  →  Laravel: App\Http\Controllers\ExaminationController
@@ -256,20 +330,90 @@ export const teacherApi = {
   getMessages: () => api.get('/teacher/messages'),
   sendMessage: (conversationId: string, body: string, subject?: string) =>
     api.post('/teacher/messages', { conversation_id: conversationId, body, subject }),
+
+  // Assignments
+  getAssignmentGroups: () =>
+    api.get('/teacher/assignments/groups'),
+
+  getAssignments: (sectionId?: string, status?: string) =>
+    api.get('/teacher/assignments', { params: { section_id: sectionId, status } }),
+
+  createAssignment: (data: { title: string; description: string; subject_id: number; class_section_id: number; due_date: string; status: string }) =>
+    api.post('/teacher/assignments', data),
+
+  updateAssignment: (id: number, data: Partial<{ title: string; description: string; due_date: string; status: string }>) =>
+    api.put(`/teacher/assignments/${id}`, data),
+
+  deleteAssignment: (id: number) =>
+    api.delete(`/teacher/assignments/${id}`),
+
+  getAssignmentSubmissions: (assignmentId: number) =>
+    api.get(`/teacher/assignments/${assignmentId}/submissions`),
+
+  leaveFeedback: (assignmentId: number, submissionId: number, feedback: string) =>
+    api.post(`/teacher/assignments/${assignmentId}/feedback`, { submission_id: submissionId, feedback }),
+
+  createLessonPlan: (data: {
+    title: string; subject_id: number; class_section_id: number
+    week_label: string; day: string; period_number: number
+    duration?: string; objectives?: string[]; activities?: string[]
+    resources?: string[]; homework?: string; status?: string
+  }) => api.post('/teacher/lesson-plans', data),
+
+  updateLessonPlan: (id: string, data: Partial<{
+    title: string; week_label: string; day: string; period_number: number
+    duration: string; objectives: string[]; activities: string[]
+    resources: string[]; homework: string; status: string
+  }>) => api.put(`/teacher/lesson-plans/${id}`, data),
+
+  deleteLessonPlan: (id: string) =>
+    api.delete(`/teacher/lesson-plans/${id}`),
+
 }
 
 // ── STUDENT / PARENT PORTAL API ───────────────────────────────────────────────
 
 export const portalApi = {
-  // PortalViews Dashboard component
-  getDashboard: () => api.get('/portal/dashboard'),
+  getChildren: () =>
+    api.get('/portal/children'),
 
-  // SubjectsView: subjects with CA scores
-  getSubjects: () => api.get('/portal/subjects'),
+  getDashboard: (studentId?: string) =>
+    api.get('/portal/dashboard', {
+      params: studentId ? { student_id: studentId } : {},
+    }),
 
-  // AttendanceView: weekly attendance records and selected-week reports
-  getAttendance: (params?: { weekStart?: string }) => api.get('/portal/attendance', { params }),
+  // Now accepts optional term param — e.g. '2026/Term 1'
+  // Returns { term, available_terms, subjects } instead of just []
+  getSubjects: (studentId?: string, term?: string) =>
+    api.get('/portal/subjects', {
+      params: {
+        ...(studentId ? { student_id: studentId } : {}),
+        ...(term      ? { term }                   : {}),
+      },
+    }),
 
-  // FeesView: fee breakdown + payment history
-  getFees: () => api.get('/portal/fees'),
+  getAttendance: (studentId?: string) =>
+    api.get('/portal/attendance', {
+      params: studentId ? { student_id: studentId } : {},
+    }),
+
+  getFees: (studentId?: string) =>
+    api.get('/portal/fees', {
+      params: studentId ? { student_id: studentId } : {},
+    }),
+
+  getAssignments: (studentId?: string) =>
+    api.get('/portal/assignments', {
+      params: studentId ? { student_id: studentId } : {},
+    }),
+
+  submitAssignment: (assignmentId: number, formData: FormData) =>
+    api.post(`/portal/assignments/${assignmentId}/submit`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+
+  withdrawSubmission: (assignmentId: number, studentId?: string) =>
+    api.delete(`/portal/assignments/${assignmentId}/submission`, {
+      params: studentId ? { student_id: studentId } : {},
+    }),
 }

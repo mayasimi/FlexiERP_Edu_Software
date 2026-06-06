@@ -1,15 +1,4 @@
-export type Section =
-  | 'dashboard'
-  | 'attendance'
-  | 'schedule'
-  | 'assessment'
-  | 'assessment-input'
-  | 'assessment-view'
-  | 'groups'
-  | 'performance'
-  | 'lesson-plans'
-  | 'messages'
-  | 'payroll'
+export type Section = 'dashboard' | 'attendance' | 'schedule' | 'assessment' | 'groups' | 'performance' | 'lesson-plans' | 'messages'  | 'assignments'
 export type AttendanceStatus = 'P' | 'A' | 'L' | 'S'
 export type AttendanceMode = 'daily' | 'period'
 
